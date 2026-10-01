@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>array box</title>
+  </head>
+  <body>
+    <template id="array-box-template">
+      <style>
+        #root { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        /* The user's lists drawn with their own tile artwork, on the right of the frame: five
+           yellow tiles (assets/tile.png) rain down with a squash-and-stretch landing, the white
+           index numbers 0-4 appear above them, each value is a black glyph cut from the user's
+           0-9 sheet (assets/dig-N.png) and lands on its tile, then the variable and a cyan arrow
+           into the first tile - the arrow style of the approved memory videos.
+           Row A is the source list (lst), row B the squares (res). */
+        .ab-tile {
+          position: absolute; opacity: 0;
+          background-image: url("assets/tile.png");
+          background-size: 100% 100%;
+          transform-origin: 50% 100%;   /* it lands on its own bottom edge */
+        }
+        .ab-dig { position: absolute; opacity: 0; background-size: 100% 100%; transform-origin: 50% 100%; }
+        .ab-dig div { position: absolute; background-size: 100% 100%; }
+        .ab-t {
+          position: absolute; opacity: 0;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          white-space: pre; color: #ffffff;
+        }
+        .ab-idx { text-align: center; font-size: 34px; line-height: 42px; }
+        /* the squaring shown in the gap between the two lists, one column at a time */
+        .ab-mul { text-align: center; font-size: 38px; line-height: 48px; }
+        /* a pair - the value and its cube - written straight onto a wider tile */
+        .ab-pair {
+          text-align: center; font-size: 36px; line-height: 48px;
+          color: #171717; font-weight: 700; transform-origin: 50% 100%;
+        }
+        /* one character of a string, written straight onto its own small tile */
+        /* a word piece written straight onto its tile */
+        .ab-word {
+          text-align: center; font-size: 26px; line-height: 50px;
+          color: #171717; font-weight: 700; transform-origin: 50% 100%;
+        }
+        .ab-chr {
+          text-align: center; font-size: 44px; line-height: 56px;
+          color: #171717; font-weight: 700; transform-origin: 50% 100%;
+        }
+        /* i and j, each in the colour of the ring that runs along its own list */
+        .ab-var {
+          position: absolute; opacity: 0; text-align: center;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          font-size: 34px; line-height: 48px; border-radius: 14px; border: 2.5px solid;
+        }
+        .ab-var-i {
+          color: #4fd1ff; border-color: #4fd1ff; background: rgba(79, 209, 255, 0.14);
+          box-shadow: 0 0 14px rgba(79, 209, 255, 0.35);
+        }
+        .ab-ring2 {
+          position: absolute; opacity: 0;
+          border: 4px solid #ffae3d; border-radius: 22px;
+          box-shadow: 0 0 18px rgba(255, 174, 61, 0.75), inset 0 0 12px rgba(255, 174, 61, 0.35);
+        }
+        .ab-ring { position: absolute; opacity: 0; border: 4px solid #4fd1ff; border-radius: 22px; box-shadow: 0 0 18px rgba(79, 209, 255, 0.75), inset 0 0 12px rgba(79, 209, 255, 0.35); }
+        #ab-lst, #ab-res, #ab-lst2, #ab-res2, #ab-res3, #ab-sv, #ab-rv, #ab-l1, #ab-l2, #ab-w1, #ab-w2, #ab-w3, #ab-w4, #ab-nl, #ab-dl, #ab-cl { text-align: right; font-size: 38px; line-height: 48px; opacity: 1; }
+        .ab-arrow { position: absolute; left: 0; top: 0; overflow: visible; }
+      </style>
+
+      <div data-hf-id="hf-7b8p" id="root" data-composition-id="array-box" data-width="1920" data-height="1080" data-duration="170"><div data-hf-id="hf-5xk8" id="ab-stage" data-layout-allow-overflow="true" style="position: absolute; inset: 0;"></div></div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var CHAR = 0.075;
+          var root = document.getElementById("root"), stage = document.getElementById("ab-stage");
+          var tl = gsap.timeline({ paused: true });
+
+          // Layout: five tiles ending 32px from the right edge.
+          var TW = 84, TH = 83, GAP = 11, N = 5;
+          var X0 = 1888 - (N * TW + (N - 1) * GAP);
+          // Where each glyph sits on its tile, as a fraction of the tile (measured off the sheet).
+          var DIG = { 0: [0.190, 0.1447, 0.600, 0.7270], 1: [0.2458, 0.1447, 0.4120, 0.7138],
+                      2: [0.2133, 0.1447, 0.580, 0.7138], 3: [0.2267, 0.1480, 0.5667, 0.7237],
+                      4: [0.1881, 0.1480, 0.6337, 0.7105], 5: [0.2067, 0.1447, 0.600, 0.7368],
+                      6: [0.1960, 0.1414, 0.6146, 0.7401], 7: [0.2400, 0.1316, 0.5733, 0.7500],
+                      8: [0.1900, 0.1349, 0.6267, 0.7467], 9: [0.1947, 0.1283, 0.6172, 0.7500] };
+          // A value's glyphs on one tile. One digit keeps its own place on the sheet; two digits
+          // are shrunk to 0.62 and centred as a pair, so every two-digit value reads the same size.
+          function glyphs(value, uniform) {
+            var ds = String(value).split("").map(Number);
+            if (ds.length === 1 && !uniform) {
+              var o = DIG[ds[0]];
+              return [{ d: ds[0], x: o[0], y: o[1], w: o[2], h: o[3] }];
+            }
+            var k = 0.72, G = 0.03, CY = 0.505, out = [];
+            var total = ds.reduce(function (a, d) { return a + DIG[d][2] * k; }, 0) + G * (ds.length - 1);
+            var x = (1 - total) / 2;
+            ds.forEach(function (d) {
+              var w = DIG[d][2] * k, h = DIG[d][3] * k;
+              out.push({ d: d, x: x, y: CY - h / 2, w: w, h: h });
+              x += w + G;
+            });
+            return out;
+          }
+
+          function add(id, cls, css, text) {
+            var el = document.createElement("div");
+            if (id) el.id = id;
+            el.className = cls;
+            el.style.cssText = css;
+            if (text !== undefined) el.textContent = text;
+            stage.appendChild(el);
+            return el;
+          }
+          // One list: index numbers, tiles, and the value glyphs sitting on them.
+          function buildRow(p, values, ty, uniform) {
+            values.forEach(function (v, i) {
+              var x = X0 + i * (TW + GAP);
+              add(p + "i" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (ty - 50) + "px; width: " + TW + "px;", String(i));
+              add(p + "t" + i, "ab-tile", "left: " + x + "px; top: " + ty + "px; width: " + TW + "px; height: " + TH + "px;");
+              var g = glyphs(v, uniform);
+              if (g.length === 1) {
+                add(p + "v" + i, "ab-dig", "left: " + (x + g[0].x * TW) + "px; top: " + (ty + g[0].y * TH) + "px; width: " + (g[0].w * TW) +
+                  "px; height: " + (g[0].h * TH) + "px; background-image: url(\"assets/dig-" + g[0].d + ".png\");");
+                return;
+              }
+              var x0 = Math.min.apply(null, g.map(function (b) { return b.x; }));
+              var y0 = Math.min.apply(null, g.map(function (b) { return b.y; }));
+              var x1 = Math.max.apply(null, g.map(function (b) { return b.x + b.w; }));
+              var y1 = Math.max.apply(null, g.map(function (b) { return b.y + b.h; }));
+              var wrap = add(p + "v" + i, "ab-dig", "left: " + (x + x0 * TW) + "px; top: " + (ty + y0 * TH) +
+                "px; width: " + ((x1 - x0) * TW) + "px; height: " + ((y1 - y0) * TH) + "px;");
+              g.forEach(function (b) {
+                var el = document.createElement("div");
+                el.style.cssText = "left: " + ((b.x - x0) * TW) + "px; top: " + ((b.y - y0) * TH) + "px; width: " + (b.w * TW) +
+                  "px; height: " + (b.h * TH) + "px; background-image: url(\"assets/dig-" + b.d + ".png\");";
+                wrap.appendChild(el);
+              });
+            });
+          }
+          // The cyan arrow of the approved style, from the variable into the first tile.
+          var SVG_OPEN = '<svg id="ID" class="ab-arrow" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">' +
+            '<defs><mask id="ID-m" maskUnits="userSpaceOnUse" x="0" y="0" width="1920" height="1080">' +
+            '<path id="ID-rv" d="M AX0 AY H AX1" fill="none" stroke="#ffffff" stroke-width="14" /></mask></defs>' +
+            '<g style="filter: drop-shadow(0 0 6px rgba(79, 209, 255, 0.65));">' +
+            '<path d="M AX0 AY H AX1" fill="none" stroke="#4fd1ff" stroke-width="4" stroke-linecap="round" mask="url(#ID-m)" />' +
+            '<polygon id="ID-hd" points="HDX,AY HBX,HUY HBX,HLY" fill="#4fd1ff" opacity="0" /></g></svg>';
+          function mkArrow(id, ay) {
+            var AX0 = X0 - 100, AX1 = X0 - 28;
+            stage.insertAdjacentHTML("beforeend", '<svg id="' + id + '" class="ab-arrow" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">' +
+              '<defs><mask id="' + id + '-m" maskUnits="userSpaceOnUse" x="0" y="0" width="1920" height="1080">' +
+              '<path id="' + id + '-rv" d="M ' + AX0 + ' ' + ay + ' H ' + AX1 + '" fill="none" stroke="#ffffff" stroke-width="14" /></mask></defs>' +
+              '<g style="filter: drop-shadow(0 0 6px rgba(79, 209, 255, 0.65));">' +
+              '<path d="M ' + AX0 + ' ' + ay + ' H ' + AX1 + '" fill="none" stroke="#4fd1ff" stroke-width="4" stroke-linecap="round" mask="url(#' + id + '-m)" />' +
+              '<polygon id="' + id + '-hd" points="' + (AX1 + 16) + ',' + ay + ' ' + (AX1 - 4) + ',' + (ay - 11) + ' ' + (AX1 - 4) + ',' + (ay + 11) + '" fill="#4fd1ff" opacity="0" /></g></svg>');
+            stage.lastChild.setAttribute("data-layout-allow-overflow", "true");
+          }
+
+          // ---- the moves ----
+          // A tile rains down and lands: it stretches as it falls, squashes on impact, springs back.
+          function rain(id, at) {
+            var s = "#" + id;
+            tl.set(s, { scaleX: 0.82, scaleY: 1.3 }, 0);
+            tl.fromTo(s, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(s, { y: -340 }, { y: 0, duration: 0.42, ease: "power2.in", immediateRender: false }, at);
+            tl.fromTo(s, { scaleX: 0.82, scaleY: 1.3 }, { scaleX: 1.32, scaleY: 0.7, duration: 0.09, ease: "power2.out", immediateRender: false }, at + 0.42);
+            tl.fromTo(s, { scaleX: 1.32, scaleY: 0.7 }, { scaleX: 1, scaleY: 1, duration: 0.7, ease: "elastic.out(1, 0.45)", immediateRender: false }, at + 0.51);
+          }
+          // A value drops onto its tile; the tile gives under it, then settles.
+          function drop(id, tile, at) {
+            var s = "#" + id;
+            tl.set(s, { scaleX: 0.86, scaleY: 1.24 }, 0);
+            tl.fromTo(s, { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(s, { y: -240 }, { y: 0, duration: 0.34, ease: "power2.in", immediateRender: false }, at);
+            tl.fromTo(s, { scaleX: 0.86, scaleY: 1.24 }, { scaleX: 1.2, scaleY: 0.78, duration: 0.08, ease: "power2.out", immediateRender: false }, at + 0.34);
+            tl.fromTo(s, { scaleX: 1.2, scaleY: 0.78 }, { scaleX: 1, scaleY: 1, duration: 0.6, ease: "elastic.out(1, 0.5)", immediateRender: false }, at + 0.42);
+            tl.fromTo("#" + tile, { scaleX: 1, scaleY: 1 }, { scaleX: 1.1, scaleY: 0.88, duration: 0.08, ease: "power2.out", immediateRender: false }, at + 0.34);
+            tl.fromTo("#" + tile, { scaleX: 1.1, scaleY: 0.88 }, { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1, 0.5)", immediateRender: false }, at + 0.42);
+          }
+          // The pop and type-on of the approved style.
+          function pop(id, at, dur) {
+            var el = document.getElementById(id);
+            tl.fromTo(el, { scale: 0.3, transformOrigin: "50% 50%" }, { scale: 1, duration: dur || 0.5, ease: "back.out(1.6)" }, at);
+            tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out", immediateRender: false }, at);
+          }
+          // ---- one ring per row: it glides along instead of popping in and out ----
+          function walker(id, cls, x0, ty, w, h, extra) {
+            return add(id, cls, "left: " + (x0 - 8) + "px; top: " + (ty - 8) + "px; width: " + (w + 16) +
+              "px; height: " + (h + 16) + "px;" + (extra || ""));
+          }
+          function ringOn(sel, x, at) {
+            tl.set(sel, { x: x, visibility: "visible" }, at - 0.3);
+            tl.fromTo(sel, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out", immediateRender: false }, at - 0.3);
+          }
+          function ringTo(sel, from, to, at, dur) {
+            var d = dur || 0.5;
+            tl.fromTo(sel, { x: from }, { x: to, duration: d, ease: "power2.inOut", immediateRender: false }, at - d);
+          }
+          function ringOff(sel, at) {
+            tl.fromTo(sel, { opacity: 1 }, { opacity: 0, duration: 0.3, ease: "power1.inOut", immediateRender: false }, at);
+            tl.set(sel, { visibility: "hidden" }, at + 0.32);   // it is gone for good, not just clear
+          }
+          // the slot it arrives on gives a little under it - the only lift left in the move
+          function bump(sels, at) {
+            sels.forEach(function (sl) {
+              tl.fromTo(sl, { scaleX: 1, scaleY: 1 }, { scaleX: 1.1, scaleY: 1.1, duration: 0.14, ease: "power2.out", immediateRender: false }, at);
+              tl.fromTo(sl, { scaleX: 1.1, scaleY: 1.1 }, { scaleX: 1, scaleY: 1, duration: 0.65, ease: "elastic.out(1, 0.45)", immediateRender: false }, at + 0.14);
+            });
+          }
+          function type(id, at) {
+            var el = document.getElementById(id), text = el.textContent;
+            el.textContent = "";
+            for (var i = 0; i < text.length; i++) {
+              var span = document.createElement("span");
+              span.textContent = text.charAt(i);
+              el.appendChild(span);
+              tl.fromTo(span, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01, ease: "none" }, at);
+              at += CHAR;
+            }
+            return at;
+          }
+          function draw(id, at) {
+            var path = document.getElementById(id + "-rv"), len = Math.ceil(path.getTotalLength()) + 2;
+            path.setAttribute("stroke-dasharray", len + " " + len);
+            tl.fromTo(path, { attr: { "stroke-dashoffset": len } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.7, ease: "power1.inOut" }, at);
+            tl.fromTo("#" + id + "-hd", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power1.out", immediateRender: false }, at + 0.6);
+          }
+          // Every list is built the same way: the tiles rain in, the indices appear, the values land.
+          function fill(p, values, t0) {
+            values.forEach(function (v, i) { rain(p + "t" + i, t0 + i * 0.18); });
+            values.forEach(function (v, i) { pop(p + "i" + i, t0 + 2.0 + i * 0.22); });
+            values.forEach(function (v, i) { drop(p + "v" + i, p + "t" + i, t0 + 3.5 + i * 0.3); });
+          }
+
+          // ---- Part 1: the two lists of word pieces, on the right ----
+          var TWS = 90, THS = 70, GAPS = 9, NS = 8;
+          var XS = 1888 - (NS * TWS + (NS - 1) * GAPS);
+          var L1 = ["A", "app", "", "da", "kee", "t", "doc", "a"];
+          var L2 = ["n", "le", "a", "y", "ps", "he", "tor", "way"];
+          var TYS1 = 150, TYS2 = 330;
+
+          // the same row as always, but each tile carries a word piece instead of a digit
+          function buildWords(p, list, ty) {
+            list.forEach(function (c, i) {
+              var x = XS + i * (TWS + GAPS);
+              add(p + "i" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (ty - 42) +
+                "px; width: " + TWS + "px; font-size: 30px; line-height: 38px;", String(i));
+              add(p + "t" + i, "ab-tile", "left: " + x + "px; top: " + ty + "px; width: " + TWS +
+                "px; height: " + THS + "px;");
+              add(p + "v" + i, "ab-t ab-word", "left: " + x + "px; top: " + (ty + 6) +
+                "px; width: " + TWS + "px;", "'" + c + "'");
+            });
+          }
+          // the arrow of the approved style, reaching into the first tile of a row at x0
+          function mkArrowAt(id, ay, x0) {
+            var AX0 = x0 - 90, AX1 = x0 - 28;
+            stage.insertAdjacentHTML("beforeend", '<svg id="' + id + '" class="ab-arrow" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">' +
+              '<defs><mask id="' + id + '-m" maskUnits="userSpaceOnUse" x="0" y="0" width="1920" height="1080">' +
+              '<path id="' + id + '-rv" d="M ' + AX0 + ' ' + ay + ' H ' + AX1 + '" fill="none" stroke="#ffffff" stroke-width="14" /></mask></defs>' +
+              '<g style="filter: drop-shadow(0 0 6px rgba(79, 209, 255, 0.65));">' +
+              '<path d="M ' + AX0 + ' ' + ay + ' H ' + AX1 + '" fill="none" stroke="#4fd1ff" stroke-width="4" stroke-linecap="round" mask="url(#' + id + '-m)" />' +
+              '<polygon id="' + id + '-hd" points="' + (AX1 + 16) + ',' + ay + ' ' + (AX1 - 4) + ',' + (ay - 11) + ' ' + (AX1 - 4) + ',' + (ay + 11) + '" fill="#4fd1ff" opacity="0" /></g></svg>');
+            stage.lastChild.setAttribute("data-layout-allow-overflow", "true");
+          }
+
+          // The run a loop variable makes: it starts at index 0 and carries on to the last
+          // one, so its arrow spans the whole row rather than pointing at a single slot.
+          function mkSpan(id, y, x0, x1, col) {
+            stage.insertAdjacentHTML("beforeend", '<svg id="' + id + '" class="ab-arrow" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">' +
+              '<defs><mask id="' + id + '-m" maskUnits="userSpaceOnUse" x="0" y="0" width="1920" height="1080">' +
+              '<path id="' + id + '-rv" d="M ' + x0 + ' ' + y + ' H ' + x1 + '" fill="none" stroke="#ffffff" stroke-width="16" /></mask></defs>' +
+              '<g style="filter: drop-shadow(0 0 6px ' + col + '99);">' +
+              '<path d="M ' + x0 + ' ' + y + ' H ' + x1 + '" fill="none" stroke="' + col + '" stroke-width="4.5" stroke-linecap="round" mask="url(#' + id + '-m)" />' +
+              '<polygon id="' + id + '-hd" points="' + (x1 + 18) + ',' + y + ' ' + (x1 - 4) + ',' + (y - 12) + ' ' + (x1 - 4) + ',' + (y + 12) + '" fill="' + col + '" opacity="0" /></g></svg>');
+            stage.lastChild.setAttribute("data-layout-allow-overflow", "true");
+          }
+
+          buildWords("ab-p", L1, TYS1);
+          buildWords("ab-q", L2, TYS2);
+          add("ab-w1", "ab-t", "left: " + (XS - 260) + "px; top: " + (TYS1 + THS / 2 - 24) + "px; width: 160px;", "lst1");
+          add("ab-w2", "ab-t", "left: " + (XS - 260) + "px; top: " + (TYS2 + THS / 2 - 24) + "px; width: 160px;", "lst2");
+          mkArrowAt("ab-wa1", Math.round(TYS1 + THS / 2), XS);
+          mkArrowAt("ab-wa2", Math.round(TYS2 + THS / 2), XS);
+
+          // each row is built once its own line of code has been written
+          fill("ab-p", L1, 33.0);
+          type("ab-w1", 39.3);
+          draw("ab-wa1", 39.6);
+          fill("ab-q", L2, 44.5);
+          type("ab-w2", 50.8);
+          draw("ab-wa2", 51.1);
+
+          // ---- which list each loop variable takes from ----
+          // Written once the for loop reads "for i,j in zip(lst1, lst2)", so the class can
+          // see that i is the piece from lst1 and j the piece from lst2.
+          add("ab-vi", "ab-var ab-var-i", "left: " + XS + "px; top: " + (TYS1 - 100) +
+            "px; width: 56px; height: 48px;", "i");
+          add("ab-vj", "ab-var ab-var-i", "left: " + XS + "px; top: " + (TYS2 - 100) +
+            "px; width: 56px; height: 48px;", "j");
+          // from the first slot to the last, which is the run the variable makes
+          var SPAN0 = XS + 78, SPAN1 = XS + 7 * (TWS + GAPS) + TWS - 14;
+          mkSpan("ab-si", TYS1 - 76, SPAN0, SPAN1, "#4fd1ff");
+          mkSpan("ab-sj", TYS2 - 76, SPAN0, SPAN1, "#4fd1ff");
+          pop("ab-vi", 63.8, 0.5);
+          draw("ab-si", 64.2);
+          pop("ab-vj", 64.1, 0.5);
+          draw("ab-sj", 64.5);
+
+          // ---- res: one slot a position, filled while the loop runs ----
+          // Its tiles are wider because a slot holds both pieces joined - 'app' + 'le' is
+          // one string, 'apple', in one index.
+          var TWR = 140, THR = 80, GAPR = 9, TYR = 560;
+          var XR = 1888 - (N8R() * TWR + (N8R() - 1) * GAPR);
+          function N8R() { return 8; }
+          var JOINED = L1.map(function (v, i) { return v + L2[i]; });
+
+          JOINED.forEach(function (w, i) {
+            var x = XR + i * (TWR + GAPR);
+            add("ab-ri" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (TYR - 44) +
+              "px; width: " + TWR + "px; font-size: 30px; line-height: 38px;", String(i));
+            add("ab-rt" + i, "ab-tile", "left: " + x + "px; top: " + TYR + "px; width: " + TWR +
+              "px; height: " + THR + "px;");
+            add("ab-rv" + i, "ab-t ab-word", "left: " + x + "px; top: " + (TYR + 11) +
+              "px; width: " + TWR + "px;", "'" + w + "'");
+          });
+          add("ab-w3", "ab-t", "left: " + (XR - 260) + "px; top: " + (TYR + THR / 2 - 24) +
+            "px; width: 160px;", "res");
+          mkArrowAt("ab-wa3", Math.round(TYR + THR / 2), XR);
+
+          // res sits under the two lists, so its pieces fall a short way - a full-height
+          // drop would carry them straight through lst2 on the way down
+          function shortRain(id, at) {
+            var e = "#" + id;
+            tl.set(e, { scaleX: 0.86, scaleY: 1.22 }, 0);
+            tl.fromTo(e, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(e, { y: -110 }, { y: 0, duration: 0.3, ease: "power2.in", immediateRender: false }, at);
+            tl.fromTo(e, { scaleX: 0.86, scaleY: 1.22 }, { scaleX: 1.24, scaleY: 0.76, duration: 0.09, ease: "power2.out", immediateRender: false }, at + 0.3);
+            tl.fromTo(e, { scaleX: 1.24, scaleY: 0.76 }, { scaleX: 1, scaleY: 1, duration: 0.65, ease: "elastic.out(1, 0.45)", immediateRender: false }, at + 0.39);
+          }
+          function land(id, tile, at) {
+            var e = "#" + id;
+            tl.set(e, { scaleX: 0.9, scaleY: 1.16 }, 0);
+            tl.fromTo(e, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(e, { y: -70 }, { y: 0, duration: 0.26, ease: "power2.in", immediateRender: false }, at);
+            tl.fromTo(e, { scaleX: 0.9, scaleY: 1.16 }, { scaleX: 1.16, scaleY: 0.84, duration: 0.08, ease: "power2.out", immediateRender: false }, at + 0.26);
+            tl.fromTo(e, { scaleX: 1.16, scaleY: 0.84 }, { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1, 0.5)", immediateRender: false }, at + 0.34);
+            tl.fromTo("#" + tile, { scaleX: 1, scaleY: 1 }, { scaleX: 1.08, scaleY: 0.9, duration: 0.08, ease: "power2.out", immediateRender: false }, at + 0.26);
+            tl.fromTo("#" + tile, { scaleX: 1.08, scaleY: 0.9 }, { scaleX: 1, scaleY: 1, duration: 0.5, ease: "elastic.out(1, 0.5)", immediateRender: false }, at + 0.34);
+          }
+
+          // the empty slots arrive first, so the class can see them being filled
+          var RES_AT = 70.6;
+          JOINED.forEach(function (w, i) { shortRain("ab-rt" + i, RES_AT + i * 0.16); });
+          JOINED.forEach(function (w, i) { pop("ab-ri" + i, RES_AT + 1.9 + i * 0.18); });
+          type("ab-w3", RES_AT + 1.4);
+          draw("ab-wa3", RES_AT + 1.7);
+
+          // one ring on each list; they move together, because zip takes the same position
+          // from both at once
+          walker("ab-k1", "ab-ring", XS, TYS1, TWS, THS);
+          walker("ab-k2", "ab-ring", XS, TYS2, TWS, THS);
+          var RUN = 73.6, STEP = 1.4, PITCH = TWS + GAPS;
+          JOINED.forEach(function (w, i) {
+            var at = RUN + i * STEP;
+            if (i === 0) { ringOn("#ab-k1", 0, at); ringOn("#ab-k2", 0, at); }
+            else {
+              ringTo("#ab-k1", (i - 1) * PITCH, i * PITCH, at, 0.5);
+              ringTo("#ab-k2", (i - 1) * PITCH, i * PITCH, at, 0.5);
+            }
+            bump(["#ab-pt" + i, "#ab-pv" + i], at);
+            bump(["#ab-qt" + i, "#ab-qv" + i], at);
+            // what the two pieces make lands in the slot the loop has reached
+            land("ab-rv" + i, "ab-rt" + i, at + 0.55);
+          });
+          ringOff("#ab-k1", RUN + 7 * STEP + 0.9);
+          ringOff("#ab-k2", RUN + 7 * STEP + 0.9);
+
+          // ---- s: eight words in eight slots become one string in one slot ----
+          var SW = 740, SH = 80, TYSS = 760, XSS = 1888 - SW;
+          var JOINED1 = "'" + JOINED.join("-") + "'";
+          var JOINED2 = "'" + JOINED.join(" ") + "'";
+          add("ab-sbt", "ab-tile", "left: " + XSS + "px; top: " + TYSS + "px; width: " + SW +
+            "px; height: " + SH + "px;");
+          add("ab-sv1", "ab-t ab-word", "left: " + XSS + "px; top: " + (TYSS + 11) +
+            "px; width: " + SW + "px; font-size: 30px;", JOINED1);
+          add("ab-sv2", "ab-t ab-word", "left: " + XSS + "px; top: " + (TYSS + 11) +
+            "px; width: " + SW + "px; font-size: 30px;", JOINED2);
+          add("ab-w4", "ab-t", "left: " + (XSS - 260) + "px; top: " + (TYSS + SH / 2 - 24) +
+            "px; width: 160px;", "s");
+          mkArrowAt("ab-wa4", Math.round(TYSS + SH / 2), XSS);
+
+          // one slot, because s is one string however many words went into it
+          shortRain("ab-sbt", 90.6);
+          type("ab-w4", 91.0);
+          draw("ab-wa4", 91.3);
+          land("ab-sv1", "ab-sbt", 91.4);
+          // and again, once the separator is a space instead of a hyphen
+          tl.fromTo("#ab-sv1", { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.3, ease: "power1.in",
+                                                   immediateRender: false }, 95.2);
+          land("ab-sv2", "ab-sbt", 95.6);
+
+          // ---- the frame clears so the next exercise has it ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut",
+                                               immediateRender: false }, 100.0);
+
+          // ---- Part 3: the sentence, and the words it splits into ----
+          var CLEAR = 113.2;
+          var GONE = ["ab-w1", "ab-w2", "ab-w3", "ab-w4", "ab-wa1", "ab-wa2", "ab-wa3", "ab-wa4",
+                      "ab-vi", "ab-vj", "ab-si", "ab-sj", "ab-k1", "ab-k2",
+                      "ab-sbt", "ab-sv1", "ab-sv2"];
+          L1.forEach(function (v, i) { GONE.push("ab-pi" + i, "ab-pt" + i, "ab-pv" + i,
+                                                 "ab-qi" + i, "ab-qt" + i, "ab-qv" + i,
+                                                 "ab-ri" + i, "ab-rt" + i, "ab-rv" + i); });
+          GONE.forEach(function (id) { tl.set("#" + id, { autoAlpha: 0 }, CLEAR); });
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut",
+                                               immediateRender: false }, 114.0);
+
+          // the whole sentence in one slot, because that is what s holds
+          var SEN = "'Welcome to Tap Academy'", SNW = 500, SNH = 80, TYN = 150;
+          var XN = 1888 - SNW;
+          add("ab-nt", "ab-tile", "left: " + XN + "px; top: " + TYN + "px; width: " + SNW +
+            "px; height: " + SNH + "px;");
+          add("ab-nv", "ab-t ab-word", "left: " + XN + "px; top: " + (TYN + 11) +
+            "px; width: " + SNW + "px; font-size: 30px;", SEN);
+          add("ab-nl", "ab-t", "left: " + (XN - 260) + "px; top: " + (TYN + SNH / 2 - 24) +
+            "px; width: 160px;", "s");
+          mkArrowAt("ab-na", Math.round(TYN + SNH / 2), XN);
+
+          rain("ab-nt", 116.8);
+          drop("ab-nv", "ab-nt", 117.6);
+          type("ab-nl", 118.0);
+          draw("ab-na", 118.3);
+
+          // split() cuts it at the spaces: one word, one index
+          var WORDS = ["Welcome", "to", "Tap", "Academy"];
+          var TWW = 180, THW = 80, GAPW = 9, TYW = 360;
+          var XW = 1888 - (WORDS.length * TWW + (WORDS.length - 1) * GAPW);
+          WORDS.forEach(function (w, i) {
+            var x = XW + i * (TWW + GAPW);
+            add("ab-di" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (TYW - 44) +
+              "px; width: " + TWW + "px; font-size: 30px; line-height: 38px;", String(i));
+            add("ab-dt" + i, "ab-tile", "left: " + x + "px; top: " + TYW + "px; width: " + TWW +
+              "px; height: " + THW + "px;");
+            add("ab-dv" + i, "ab-t ab-word", "left: " + x + "px; top: " + (TYW + 11) +
+              "px; width: " + TWW + "px; font-size: 30px;", "'" + w + "'");
+          });
+          add("ab-dl", "ab-t", "left: " + (XW - 260) + "px; top: " + (TYW + THW / 2 - 24) +
+            "px; width: 160px;", "lst");
+          mkArrowAt("ab-da", Math.round(TYW + THW / 2), XW);
+
+          WORDS.forEach(function (w, i) {
+            var at = 121.6 + i * 0.75;
+            rain("ab-dt" + i, at);
+            pop("ab-di" + i, at + 0.5);
+            drop("ab-dv" + i, "ab-dt" + i, at + 0.7);
+          });
+          type("ab-dl", 125.0);
+          draw("ab-da", 125.3);
+
+          // ---- res: the same four words, cased by their own length ----
+          var CASED = WORDS.map(function (w) { return w.length >= 5 ? w.toLowerCase() : w.toUpperCase(); });
+          var TYR2 = 560;
+          CASED.forEach(function (w, i) {
+            var x = XW + i * (TWW + GAPW);
+            add("ab-ci" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (TYR2 - 44) +
+              "px; width: " + TWW + "px; font-size: 30px; line-height: 38px;", String(i));
+            add("ab-ct" + i, "ab-tile", "left: " + x + "px; top: " + TYR2 + "px; width: " + TWW +
+              "px; height: " + THW + "px;");
+            add("ab-cv" + i, "ab-t ab-word", "left: " + x + "px; top: " + (TYR2 + 11) +
+              "px; width: " + TWW + "px; font-size: 30px;", "'" + w + "'");
+          });
+          add("ab-cl", "ab-t", "left: " + (XW - 260) + "px; top: " + (TYR2 + THW / 2 - 24) +
+            "px; width: 160px;", "res");
+          mkArrowAt("ab-ca", Math.round(TYR2 + THW / 2), XW);
+
+          // the empty slots first, then one fills each time the loop reaches a word
+          var RES2 = 157.4;
+          CASED.forEach(function (w, i) { shortRain("ab-ct" + i, RES2 + i * 0.18); });
+          CASED.forEach(function (w, i) { pop("ab-ci" + i, RES2 + 1.4 + i * 0.2); });
+          type("ab-cl", RES2 + 1.0);
+          draw("ab-ca", RES2 + 1.3);
+
+          walker("ab-cw", "ab-ring", XW, TYW, TWW, THW);
+          var RUN2 = 160.0, STEP2 = 1.6, PITCH2 = TWW + GAPW;
+          CASED.forEach(function (w, i) {
+            var at = RUN2 + i * STEP2;
+            if (i === 0) ringOn("#ab-cw", 0, at);
+            else ringTo("#ab-cw", (i - 1) * PITCH2, i * PITCH2, at, 0.55);
+            bump(["#ab-dt" + i, "#ab-dv" + i], at);
+            land("ab-cv" + i, "ab-ct" + i, at + 0.6);
+          });
+          ringOff("#ab-cw", RUN2 + 3 * STEP2 + 1.0);
+          window.__timelines["array-box"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>output window</title>
+  </head>
+  <body>
+    <template id="output-window-template">
+      <style>
+        #root { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        /* The approved output window (STYLE.md): vector chrome, the user's "output" title art,
+           JetBrains Mono 500 in white. It is built and sized per run by the script below, so a
+           printed line is never split: the window hugs its widest line and its line count. */
+        .ow-stage { position: absolute; inset: 0; }
+        .ow-win { position: absolute; opacity: 0; }
+        .ow-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+        .ow-titlebar { position: absolute; left: 22px; top: 12.5px; width: 237.6px; height: 35px; }
+        .ow-text { position: absolute; left: 28px; top: 79px; font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500; color: #ffffff; white-space: pre; }
+        .ow-line { white-space: pre; }
+      </style>
+
+      <div data-hf-id="hf-fkux" id="root" data-composition-id="output-window" data-width="1920" data-height="1080" data-duration="170"></div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var CHAR = 0.03, NEWLINE = 0.15;   // the approved printing rhythm
+          var root = document.getElementById("root");
+          var tl = gsap.timeline({ paused: true });
+
+          // A window for `lines` at `font`px on a `lh`px grid, centred on (cx, cy).
+          function win(id, lines, font, lh, cx, cy) {
+            var cw = font * 0.6;
+            var cols = lines.reduce(function (m, l) { return Math.max(m, l.length); }, 12);
+            var pw = Math.ceil(cols * cw + 40), ph = lines.length * lh + 32, bw = pw + 16, bh = ph + 71;
+            var x = Math.round(cx - bw / 2), y = Math.round(cy - bh / 2);
+            var st = document.createElement("div");
+            st.id = id;
+            st.className = "ow-stage";
+            st.style.transformOrigin = cx + "px " + cy + "px";
+            st.setAttribute("data-layout-allow-overflow", "true");
+            st.innerHTML = '<div id="' + id + '-w" class="ow-win" data-layout-allow-overflow="true" style="left: ' + x + 'px; top: ' + y + 'px; width: ' + bw + 'px; height: ' + bh + 'px;">' +
+              '<svg class="ow-svg" width="' + bw + '" height="' + bh + '" xmlns="http://www.w3.org/2000/svg">' +
+              '<defs><clipPath id="' + id + '-c"><rect x="0" y="0" width="' + bw + '" height="' + bh + '" rx="20" /></clipPath></defs>' +
+              '<rect x="-17" y="-17" width="' + (bw + 34) + '" height="' + (bh + 34) + '" rx="37" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 13" />' +
+              '<rect x="0" y="0" width="' + bw + '" height="' + bh + '" rx="20" fill="#0c1620" />' +
+              '<g clip-path="url(#' + id + '-c)"><rect x="0" y="0" width="' + bw + '" height="60" fill="#16202c" /><rect x="0" y="59" width="' + bw + '" height="1.5" fill="#222e3e" /></g>' +
+              '<rect x="8" y="63" width="' + pw + '" height="' + ph + '" rx="10" fill="#0c1620" stroke="#1f2c3d" stroke-width="1.5" /></svg>' +
+              '<img class="ow-titlebar" src="assets/output-titlebar.webp" alt="Traffic lights and the title output">' +
+              '<div class="ow-text" style="font-size: ' + font + 'px; line-height: ' + lh + 'px;"></div></div>';
+            root.appendChild(st);
+            var box = st.querySelector(".ow-text"), spans = [];
+            lines.forEach(function (text) {
+              var line = document.createElement("div");
+              line.className = "ow-line";
+              box.appendChild(line);
+              var row = [];
+              for (var i = 0; i < text.length; i++) {
+                var span = document.createElement("span");
+                span.textContent = text.charAt(i);
+                line.appendChild(span);
+                row.push(span);
+              }
+              spans.push(row);
+            });
+            return spans;
+          }
+          // Pop up, print one character at a time, and (optionally) leave.
+          function run(id, spans, popAt, outAt) {
+            tl.fromTo("#" + id, { scale: 0.3 }, { scale: 1, duration: 0.7, ease: "back.out(1.3)" }, popAt);
+            tl.fromTo("#" + id + "-w", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out", immediateRender: false }, popAt);
+            var at = popAt + 0.9;
+            spans.forEach(function (row) {
+              row.forEach(function (s) {
+                tl.fromTo(s, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01, ease: "none" }, at);
+                at += CHAR;
+              });
+              at += NEWLINE;
+            });
+            if (outAt != null) tl.fromTo("#" + id, { opacity: 1 }, { opacity: 0, duration: 0.6, ease: "power1.inOut", immediateRender: false }, outAt);
+            return at;
+          }
+
+          // ---- Part 5: print(res) - the list the loop built, under the code window ----
+          run("o1", win("o1", ["[25, 49, 1, 4, 16]"], 44, 56, 405, 755), 39.4, 48.3);
+
+          // ---- Part 6: print(res) again - the comprehension gives the same list ----
+          run("o2", win("o2", ["[25, 49, 1, 4, 16]"], 44, 56, 405, 755), 49.0, null);
+
+          // ---- Parts 7 and 8: the even list, printed by the loop and then by the comprehension ----
+          ["#o1", "#o2"].forEach(function (sel) { tl.set(sel, { autoAlpha: 0 }, 73.9); });
+          tl.set("#root", { opacity: 1 }, 74.0);
+          run("o3", win("o3", ["[2, 4]"], 44, 56, 405, 822), 98.5, 101.0);
+          run("o4", win("o4", ["[2, 4]"], 44, 56, 405, 547), 110.0, 117.0);
+
+          // ---- Parts 9 and 10: the odd values, then the values the "or" lets through ----
+          run("o5", win("o5", ["[5, 7, 1]"], 44, 56, 405, 547), 129.5, 133.0);
+          run("o6", win("o6", ["[3, 2, 4, 6, 8, 9]"], 44, 56, 405, 478), 162.5, 179.0);
+
+          // ---- Parts 12 and 13: the even values kept, the odd ones replaced by 0 ----
+          run("o7", win("o7", ["[0, 0, 0, 2, 4]"], 44, 56, 405, 641), 209.5, 213.5);
+          run("o8", win("o8", ["[0, 0, 0, 2, 4]"], 44, 56, 405, 500), 221.5, 239.0);
+
+          // ---- The lesson clears away so the practice question has the frame ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 62.0);
+
+          // ---- Part 15: every value beside its cube ----
+          run("o9", win("o9", ["[(5, 125), (7, 343), (1, 1), (2, 8), (4, 64)]"], 26, 36, 404, 520), 266.5, 275.0);
+
+          // ---- Part 16: the vowels the loop collected ----
+          run("o10", win("o10", ["['e', 'o', 'o']"], 44, 56, 405, 888), 328.6, 335.0);
+
+          // ---- Part 17: the same list, then the count the question asked for ----
+          run("o11", win("o11", ["['e', 'o', 'o']"], 44, 56, 405, 554), 344.4, 347.0);
+          run("o12", win("o12", ["3"], 44, 56, 405, 554), 350.4, 359.5);
+
+          // ---- Part 18: one line of input, one line of logic, and the answer ----
+          run("o13", win("o13", ["3"], 44, 56, 405, 408), 370.5, null);
+
+          // ---- Parts 20 and 21: the evens squared, the odds doubled ----
+          run("o14", win("o14", ["[2, 16, 4, 6, 10]"], 44, 56, 405, 846), 424.0, 428.5);
+          run("o15", win("o15", ["[2, 16, 4, 6, 10]"], 44, 56, 405, 488), 437.3, null);
+
+          // ---- only the lists are left for the closing exercise ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 379.0);
+          tl.set("#o13", { autoAlpha: 0 }, 400.9);   // the vowel count is done with
+          tl.set("#root", { opacity: 1 }, 401.0);   // it comes back with the code window
+
+          // ---- everything clears for the closing exercise ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 445.0);
+
+          tl.set("#o15", { autoAlpha: 0 }, 481.3);   // the previous exercise is done with
+          tl.set("#root", { opacity: 1 }, 481.4);   // it comes back with the code window
+          // ---- Part 23: every pair, then only the pairs of two different values ----
+          run("o16", win("o16", ["[(2, 5), (2, 4), (2, 2), (2, 1), (4, 5), (4, 4),", " (4, 2), (4, 1), (5, 5), (5, 4), (5, 2), (5, 1)]"], 30, 40, 490, 762), 518.6, 525.6);
+          run("o17", win("o17", ["[(2, 5), (2, 4), (2, 1), (4, 5), (4, 2),", " (4, 1), (5, 4), (5, 2), (5, 1)]"], 30, 40, 470, 783), 530.2, 538.0);
+
+          // ---- Part 24: the same twelve pairs, from one line ----
+          run("o18", win("o18", ["[(2, 5), (2, 4), (2, 2), (2, 1), (4, 5), (4, 4),", " (4, 2), (4, 1), (5, 5), (5, 4), (5, 2), (5, 1)]"], 30, 40, 490, 719), 548.5, 556.2);
+
+          // ---- Part 25: the nine pairs the condition lets through ----
+          run("o19", win("o19", ["[(2, 5), (2, 4), (2, 1), (4, 5), (4, 2),", " (4, 1), (5, 4), (5, 2), (5, 1)]"], 30, 40, 470, 719), 560.0, null);
+
+          // ---- Part 27: a zip object first, then what is inside it ----
+          tl.set("#o19", { autoAlpha: 0 }, 595.5);   // the previous run is done with
+          tl.set("#root", { opacity: 1 }, 595.6);
+          run("o20", win("o20", ["<zip object at 0x000002B1F4A3C280>"], 34, 44, 430, 665), 607.4, 610.6);
+          run("o21", win("o21", ["[(2, 1), (4, 3), (5, 9)]"], 40, 52, 400, 665), 614.4, 622.0);
+
+          // ---- Parts 28 and 29: the pairs zip makes, then their sums ----
+          run("o22", win("o22", ["[(2, 1), (4, 3), (5, 9)]"], 40, 52, 340, 540), 639.6, 644.0);
+          run("o23", win("o23", ["[3, 7, 14]"], 40, 52, 340, 540), 651.0, null);
+
+          // ---- the windows clear for the next exercise ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 568.0);
+
+          window.__timelines["output-window"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

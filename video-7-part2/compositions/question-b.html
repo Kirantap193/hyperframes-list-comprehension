@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>question b</title>
+  </head>
+  <body>
+    <template id="question-b-template">
+      <style>
+        /* the card sits a fifth smaller and higher up the frame */
+        #root {
+          transform: translateY(-120px) scale(0.8);
+          transform-origin: 960px 540px;
+          position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+        }
+        /* The practice question on the user's own card: the marker in its own tile beside a
+           rule, the task with its opening phrase picked out in amber, and the sample input and
+           output each on a labelled row. The syntax card carries the same treatment. */
+        #qb-card {
+          position: absolute; opacity: 0;
+          background: linear-gradient(145deg, #1a232c 0%, #0d131a 100%);
+          border: 1.5px solid #2a3642; border-radius: 44px;
+          box-shadow: 0 34px 90px rgba(0, 0, 0, 0.62);
+        }
+        #qb-mark {
+          position: absolute; opacity: 0; text-align: center;
+          background: linear-gradient(145deg, #2e3843, #1b232c);
+          border: 1px solid #3c4854; border-radius: 30px;
+          font-family: "SF Pro Display", "Inter", -apple-system, "Segoe UI", sans-serif;
+          font-weight: 500; color: #f3c896; font-size: 72px; line-height: 148px;
+          text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.30), 0 3px 0 rgba(0, 0, 0, 0.62), 0 6px 0 rgba(0, 0, 0, 0.45),
+                       0 9px 0 rgba(0, 0, 0, 0.30), 0 15px 24px rgba(0, 0, 0, 0.6);
+        }
+        #qb-rule { position: absolute; opacity: 0; width: 2px; background: #2c3846; }
+        .qb-ask {
+          position: absolute; white-space: pre; color: #ffffff;
+          font-family: "SF Pro Display", "Inter", -apple-system, "Segoe UI", sans-serif;
+          font-weight: 500; letter-spacing: -0.01em; font-size: 62px; line-height: 80px;
+          text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.38), 0 3px 0 #141d27, 0 6px 0 #0c141d,
+                       0 9px 0 #070d14, 0 16px 26px rgba(0, 0, 0, 0.68);
+        }
+        .qb-key { color: #ffffff; }   /* the question reads in one colour */
+        /* the two sample rows */
+        .qb-chip {
+          position: absolute; opacity: 0; border-radius: 22px; text-align: center;
+          font-family: "SF Pro Display", "Inter", -apple-system, "Segoe UI", sans-serif;
+          font-weight: 500; color: #ffffff; font-size: 46px;
+          display: flex; align-items: center; justify-content: center;
+          text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.30), 0 3px 0 rgba(0, 0, 0, 0.62), 0 6px 0 rgba(0, 0, 0, 0.45),
+                       0 9px 0 rgba(0, 0, 0, 0.30), 0 15px 24px rgba(0, 0, 0, 0.6);
+        }
+        .qb-colon {
+          position: absolute; opacity: 0; color: #ffffff;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          font-size: 46px; display: flex; align-items: center; justify-content: center;
+          text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.30), 0 3px 0 rgba(0, 0, 0, 0.62), 0 6px 0 rgba(0, 0, 0, 0.45),
+                       0 9px 0 rgba(0, 0, 0, 0.30), 0 15px 24px rgba(0, 0, 0, 0.6);
+        }
+        .qb-slot { position: absolute; opacity: 0; border-radius: 22px; border: 1.5px solid; }
+        .qb-val {
+          position: absolute; white-space: pre; color: #ffffff;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          font-size: 46px; line-height: 108px;
+          /* the values stand off the card the way the question does */
+          text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.30), 0 3px 0 #0b1219, 0 6px 0 #070d14,
+                       0 9px 0 #04080d, 0 15px 24px rgba(0, 0, 0, 0.66);
+        }
+        .qb-in { background: linear-gradient(160deg, #2166b8 0%, #16437a 100%); }
+        .qb-in-slot { border-color: #27384a; background: #101a24; }
+        .qb-out { background: linear-gradient(160deg, #1f8060 0%, #11533f 100%); }
+        .qb-out-slot { border-color: #1e4a3a; background: #0d1a16; }
+        .qb-num-in { color: #b07cf5; }
+        .qb-num-out { color: #ff9f43; }
+      </style>
+
+      <div data-hf-id="hf-bkll" id="root" data-composition-id="question-b" data-width="1920" data-height="1080" data-duration="170">
+        <div data-hf-id="hf-p7l9" id="qb-card"><div data-hf-id="hf-ekvj" id="qb-mark">b.</div><div data-hf-id="hf-ydv5" id="qb-rule"></div></div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var card = document.getElementById("qb-card");
+          var tl = gsap.timeline({ paused: true });
+
+          // Three rows of long lists, so the card is wider and taller than part 1's and the
+          // values are set smaller - the chips and the question keep their size.
+          var CW = 1820, CH = 620, PAD = 52, VFS = 46, MONO = VFS * 0.6;
+          card.style.cssText += "left: " + Math.round((1920 - CW) / 2) + "px; top: " +
+            Math.round((1080 - CH) / 2) + "px; width: " + CW + "px; height: " + CH + "px;";
+          document.getElementById("qb-mark").style.cssText += "left: " + PAD + "px; top: 38px; width: 148px; height: 148px;";
+          document.getElementById("qb-rule").style.cssText += "left: " + (PAD + 184) + "px; top: 46px; height: 132px;";
+
+          function el(cls, css, text) {
+            var d = document.createElement("div");
+            d.className = cls;
+            d.style.cssText = css;
+            if (text !== undefined) d.textContent = text;
+            card.appendChild(d);
+            return d;
+          }
+          // a line typed one character at a time; `tone` marks the characters with their own colour
+          function typed(cls, css, tokens) {
+            var d = el(cls, css), chars = [];
+            tokens.forEach(function (tok) {
+              for (var i = 0; i < tok[1].length; i++) {
+                var s = document.createElement("span");
+                if (tok[0]) s.className = tok[0];
+                s.textContent = tok[1].charAt(i);
+                d.appendChild(s);
+                chars.push(s);
+              }
+            });
+            return chars;
+          }
+          function type(chars, at, rate) {
+            chars.forEach(function (sp, k) {
+              tl.fromTo(sp, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01, ease: "none" }, at + k * rate);
+            });
+            return at + chars.length * rate;
+          }
+
+          // "whenever the number of letters in each word, if it is less than five it should be
+          // converted to upper case; five or more, lower case"
+          var TX = PAD + 224;
+          var q1 = typed("qb-ask", "left: " + TX + "px; top: 44px;",
+            [[null, "Write a program to upper case each word"]]);
+          var q2 = typed("qb-ask", "left: " + TX + "px; top: 124px;",
+            [[null, "under 5 letters and lower case the rest"]]);
+
+          var CHIP = 190, COL = PAD + CHIP + 22, SLOT = PAD + CHIP + 90, RH = 108, PITCH = 134;
+          var GROUPS = [
+            { name: "Input", tone: "qb-in", slot: "qb-in-slot", num: "qb-num-in", y: 340,
+              texts: ["'Welcome to Tap Academy'"] },
+            { name: "Output", tone: "qb-out", slot: "qb-out-slot", num: "qb-num-out", y: 520,
+              texts: ["welcome TO TAP academy"] },
+          ];
+          var built = GROUPS.map(function (g) {
+            // the chip stands level with the first line of its own block
+            var mid = g.y;
+            return {
+              chip: el("qb-chip " + g.tone, "left: " + PAD + "px; top: " + mid + "px; width: " +
+                CHIP + "px; height: " + RH + "px;", g.name),
+              colon: el("qb-colon", "left: " + COL + "px; top: " + mid + "px; width: 60px; height: " + RH + "px;", ":"),
+              rows: g.texts.map(function (text, k) {
+                var y = g.y + k * PITCH;
+                return {
+                  slot: el("qb-slot " + g.slot, "left: " + SLOT + "px; top: " + y + "px; width: " +
+                    (Math.round(text.length * MONO) + 72) + "px; height: " + RH + "px;"),
+                  value: typed("qb-val", "left: " + (SLOT + 36) + "px; top: " + y + "px; line-height: " + RH + "px;",
+                    text.split("").map(function (c) { return [/[A-Za-z]/.test(c) ? g.num : null, c]; })),
+                };
+              }),
+            };
+          });
+
+          var CARD_AT = 101.2, MARK_AT = 101.7, Q_AT = 102.2;
+
+          tl.fromTo(card, { opacity: 0, scale: 0.9, transformOrigin: "50% 50%" },
+                          { opacity: 1, scale: 1, duration: 0.65, ease: "back.out(1.5)" }, CARD_AT);
+          tl.fromTo("#qb-mark", { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" },
+                                { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.4)", immediateRender: false }, MARK_AT);
+          tl.fromTo("#qb-rule", { opacity: 0, scaleY: 0, transformOrigin: "50% 50%" },
+                                { opacity: 1, scaleY: 1, duration: 0.45, ease: "power2.out", immediateRender: false }, MARK_AT + 0.2);
+
+          var at = type(q1, Q_AT, 0.035);
+          at = type(q2, at + 0.18, 0.035);
+
+          var rowAt = at + 0.6;
+          built.forEach(function (b) {
+            [b.chip, b.colon].forEach(function (e) {
+              tl.fromTo(e, { opacity: 0, x: -26 }, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out", immediateRender: false }, rowAt);
+            });
+            b.rows.forEach(function (r) {
+              tl.fromTo(r.slot, { opacity: 0, x: -26 }, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out", immediateRender: false }, rowAt);
+              type(r.value, rowAt + 0.45, 0.025);
+              rowAt += 2.2;
+            });
+          });
+
+          // ---- the exercise clears so the program can be written ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut",
+                                               immediateRender: false }, 112.6);
+          window.__timelines["question-b"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

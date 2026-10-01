@@ -1,0 +1,19 @@
+# Only the list-comprehension lesson lives in this repository.
+/*
+!/.gitignore
+!/README.md
+!/video-7/
+!/video-7-part2/
+!/tools/
+
+# Rendered video and the decks built from it: large, and reproducible from the source.
+renders/
+*.mp4
+*.pptx
+
+# Snapshot folders the CLI writes while checking a beat.
+**/*.png/
+**/contact-sheet.jpg
+.thumbnails/
+
+node_modules/

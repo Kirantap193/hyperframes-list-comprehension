@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>code window</title>
+  </head>
+  <body>
+    <template id="code-window-template">
+      <style>
+        #root {
+          /* the whole window sits a little smaller on the frame, anchored at its top left */
+          transform: scale(0.66);
+          transform-origin: 49px 105px;
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: none;
+          /* The approved code colours (video-5-part2, the user's reference frame). */
+          --cw-default: #ffffff;   /* the same white as the output window, so lst and res read clearly */
+          --cw-keyword: #c099ff;
+          --cw-string: #e0c78b;
+          --cw-number: #f5a97f;
+          --cw-builtin: #8fb3ff;
+          --cw-comment: #8c8c8c;
+        }
+        .cw-stage { position: absolute; inset: 0; transform-origin: 50% 50%; }
+        .cw-win { position: absolute; left: 0; top: 0; width: 856px; height: 541px; opacity: 0; transform-origin: 0 0; }
+        .cw-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+        .cw-titlebar { position: absolute; left: 22px; top: 11.2px; width: 245.5px; height: 37.6px; }
+        /* Code panel at (8, 63); 20px / 16px inner padding; 36px text on a 46px grid. */
+        /* the line the loop is standing on while the trace is being written */
+        .cw-hl {
+          position: absolute; left: -10px; opacity: 0;
+          background: rgba(143, 179, 255, 0.24);
+          border-left: 6px solid #a8c4ff; border-radius: 6px;
+        }
+        .cw-code {
+          position: absolute;
+          left: 28px;
+          top: 79px;
+          font-family: "JetBrains Mono", Consolas, monospace;
+          font-weight: 400;
+          font-size: 52px;
+          line-height: 66px;
+          color: var(--cw-default);
+          font-variant-ligatures: none; /* "==" must read as two equals signs */
+        }
+        .cw-line { position: absolute; left: 0; height: 46px; white-space: pre; }
+        .cw-kw { color: var(--cw-keyword); }
+        .cw-str { color: var(--cw-string); font-style: italic; }
+        .cw-num { color: var(--cw-number); }
+        .cw-bi { color: var(--cw-builtin); }
+        .cw-com, .cw-comment span { color: var(--cw-comment); }
+      </style>
+
+      <div data-hf-id="hf-bjih" id="root" data-composition-id="code-window" data-width="1920" data-height="1080" data-duration="170">
+        <div data-hf-id="hf-lzc7" id="cw-stage" class="cw-stage" data-layout-allow-overflow="true">
+          <div data-hf-id="hf-8cnz" id="cw-win" class="cw-win" data-layout-allow-overflow="true">
+            <svg data-hf-id="hf-kr93" id="cw-svg" class="cw-svg" width="856" height="541" xmlns="http://www.w3.org/2000/svg">
+              <defs data-hf-id="hf-mh0t">
+                <clippath data-hf-id="hf-wlca" id="cw-clip"><rect data-hf-id="hf-ojxc" id="cw-clip-rect" x="0" y="0" width="856" height="541" rx="20" /></clippath>
+              </defs>
+              <rect data-hf-id="hf-yhl5" id="cw-outline" x="-17" y="-17" width="890" height="575" rx="37" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 13" />
+              <rect data-hf-id="hf-l2bh" id="cw-body" x="0" y="0" width="856" height="541" rx="20" fill="#101b2c" />
+              <g data-hf-id="hf-q2we" clip-path="url(#cw-clip)">
+                <rect data-hf-id="hf-rify" id="cw-title" x="0" y="0" width="856" height="60" fill="#1b2536" />
+                <rect data-hf-id="hf-pp9u" id="cw-sep" x="0" y="59" width="856" height="1.5" fill="#2a3649" />
+              </g>
+              <rect data-hf-id="hf-i1qo" id="cw-panel" x="8" y="63" width="840" height="470" rx="10" fill="#101b2c" stroke="#26344b" stroke-width="1.5" />
+            </svg>
+            <img data-hf-id="hf-jk6i" class="cw-titlebar" src="assets/code-titlebar.webp" alt="Traffic lights and the title Main.py">
+            <div data-hf-id="hf-de22" id="cw-code" class="cw-code"></div>
+          </div>
+        </div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          // Seconds (this slot starts at global 0).
+          var POP_AT = 10.0, POP_DUR = 0.7;             // part 2: the code window pops up on the left
+          var CHAR = 0.075, NEWLINE = 0.25;             // the slow typing rhythm (PPT clicks later)
+          var LINE_H = 66, BLANK_H = 33, CW = 31.2;     // one column = 31.2px at 52px
+          var PUSH_DUR = 0.4;                           // a new line pushes the lines below it down
+
+          // Top of a line with `code` code lines and `blank` half-height blank lines above it.
+          function rowTop(code, blank) { return code * LINE_H + blank * BLANK_H; }
+          // Window pose for `cols` columns and `code` + `blank` lines, at (x, y); y null = centred
+          // vertically. Sized from part 1's content when it arrives.
+          function pose(cols, code, blank, x, y) {
+            var pw = Math.ceil(cols * CW + 40), ph = rowTop(code, blank) + 32;
+            var bh = ph + 71;
+            return { x: x, y: y == null ? 540 - bh / 2 : y, bw: pw + 16, bh: bh, pw: pw, ph: ph };
+          }
+          var TYPE_AT = 10.9;                           // ... and lst = [5, 7, 1, 2, 4] types in
+          // Part 2's pose: one line of 21 columns, at the top left (outline 32px from the edge,
+          // its top level with the index row of the list on the right). The window is as large as
+          // the space beside the lists allows, so the code reads from the back of the room.
+          var P1 = pose(21, 1, 0, 49, 105);
+
+          var D = "", K = "cw-kw", S = "cw-str", N = "cw-num", B = "cw-bi", C = "cw-com";
+          var tl = gsap.timeline({ paused: true });
+          var code = document.getElementById("cw-code");
+
+          function addLine(tokens, top) {
+            var line = document.createElement("div");
+            line.className = "cw-line";
+            line.style.top = top + "px";
+            code.appendChild(line);
+            var chars = [];
+            tokens.forEach(function (tok) {
+              for (var i = 0; i < tok[1].length; i++) {
+                var span = document.createElement("span");
+                if (tok[0]) span.className = tok[0];
+                span.textContent = tok[1].charAt(i);
+                line.appendChild(span);
+                chars.push(span);
+              }
+            });
+            return { el: line, chars: chars };
+          }
+          function reveal(span, at) {
+            tl.fromTo(span, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01, ease: "none" }, at);
+          }
+          // Type characters left to right; indentation is skipped. Returns the next time.
+          function typeChars(chars, at) {
+            var leading = true;
+            chars.forEach(function (span) {
+              if (leading && span.textContent === " ") return;
+              leading = false;
+              reveal(span, at);
+              at += CHAR;
+            });
+            return at;
+          }
+          // One line. An assignment types its value first, then "=", then the name (10, =, a).
+          function typeLine(line, at) {
+            var text = line.chars.map(function (s) { return s.textContent; }).join("");
+            var m = /^(\s*)([A-Za-z_][\w.]*(?:, [A-Za-z_][\w.]*)*) = (?!=)/.exec(text);
+            if (!m) return typeChars(line.chars, at);
+            var lhsEnd = m[1].length + m[2].length, rhsAt = m[0].length;
+            at = typeChars(line.chars.slice(rhsAt), at);
+            at = typeChars(line.chars.slice(lhsEnd, rhsAt), at);
+            return typeChars(line.chars.slice(m[1].length, lhsEnd), at);
+          }
+          // Type code lines (token rows; null = a half-height blank line) from `top`.
+          function typeLines(rows, top, at) {
+            var lines = [];
+            rows.forEach(function (tokens) {
+              if (tokens) {
+                var line = addLine(tokens, top);
+                lines.push(line);
+                at = typeLine(line, at);
+                top += LINE_H;
+              } else {
+                top += BLANK_H;
+              }
+              at += NEWLINE;
+            });
+            lines.end = at;
+            return lines;
+          }
+          // The window's vector chrome at a pose, and a reshape (and move) between two poses.
+          function chrome(p) {
+            return {
+              "cw-outline": { width: p.bw + 34, height: p.bh + 34 },
+              "cw-body": { width: p.bw, height: p.bh },
+              "cw-clip-rect": { width: p.bw, height: p.bh },
+              "cw-title": { width: p.bw },
+              "cw-sep": { width: p.bw },
+              "cw-panel": { width: p.pw, height: p.ph },
+            };
+          }
+          function resizeWin(from, to, at, dur) {
+            var a = chrome(from), b = chrome(to);
+            Object.keys(a).forEach(function (id) {
+              tl.fromTo("#" + id, { attr: a[id] }, { attr: b[id], duration: dur, ease: "power2.inOut", immediateRender: false }, at);
+            });
+            if (from.x !== to.x || from.y !== to.y) {
+              tl.fromTo("#cw-win", { x: from.x, y: from.y }, { x: to.x, y: to.y, duration: dur, ease: "power2.inOut", immediateRender: false }, at);
+            }
+          }
+
+          // Put the window straight into a pose, with no tween - used when the frame has
+          // been cleared and the window comes back at a size it has not held before.
+          function setWin(pp, at) {
+            var c = chrome(pp);
+            Object.keys(c).forEach(function (id) { tl.set("#" + id, { attr: c[id] }, at); });
+            tl.set("#cw-win", { x: pp.x, y: pp.y }, at);
+          }
+          // One character is replaced by another in the same column.
+          function swap(outCh, inCh, at) {
+            tl.fromTo(outCh, { autoAlpha: 1, scale: 1, transformOrigin: "50% 60%" },
+                             { autoAlpha: 0, scale: 0.4, duration: 0.22, ease: "power2.in", immediateRender: false }, at);
+            tl.fromTo(inCh, { autoAlpha: 0, scale: 0.4, transformOrigin: "50% 60%" },
+                            { autoAlpha: 1, scale: 1, duration: 0.35, ease: "back.out(2.6)", immediateRender: false }, at + 0.2);
+          }
+          // The bar that lights the line a trace is standing on.
+          function hlBar(top) {
+            var d = document.createElement("div");
+            d.className = "cw-hl";
+            d.style.cssText = "top: " + (top - 4) + "px; width: " + (pose(25, 1, 0).pw - 56) + "px; height: " + (LINE_H - 4) + "px;";
+            code.insertBefore(d, code.firstChild);
+            return d;
+          }
+          function lit(el, at, outAt) {
+            tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.18, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.25, ease: "power1.inOut", immediateRender: false }, outAt);
+          }
+
+          // ---- Part 2: the two lists, then the comprehension built a piece at a time ----
+          // The two list lines are 53 and 54 columns, so they set the window's width and
+          // the scale that still clears the lst1 label out on the right.
+          // The largest the window can be and still clear the lst1 label out on the right.
+          var SC = 0.73;
+          var W1 = pose(53, 1, 0, 49, 105), W2 = pose(54, 2, 0, 49, 105);
+          var W3 = pose(54, 3, 1, 49, 105), W4 = pose(54, 4, 2, 49, 105);
+
+          tl.set("#cw-win", { x: W1.x, y: W1.y }, 0);
+          var base = chrome(W1);
+          Object.keys(base).forEach(function (id) { tl.set("#" + id, { attr: base[id] }, 0); });
+          // The stage scales about the window's own top left, the same point the root uses,
+          // so the right-hand edge is simply 49 + width x scale - which is what has to clear
+          // the lst1 label on the right.
+          document.getElementById("cw-stage").style.transformOrigin = W1.x + "px " + W1.y + "px";
+
+          var POP = 28.0;
+          tl.fromTo("#cw-stage", { scale: 0.3 }, { scale: SC, duration: POP_DUR, ease: "back.out(1.3)" }, POP);
+          tl.fromTo("#cw-win", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out", immediateRender: false }, POP);
+
+          function lst(name, items) {
+            var row = [[D, name + " = ["]];
+            items.forEach(function (v, i) {
+              if (i) row.push([D, ", "]);
+              row.push([S, "'" + v + "'"]);
+            });
+            row.push([D, "]"]);
+            return row;
+          }
+          var l1 = typeLines([lst("lst1", ["A", "app", "", "da", "kee", "t", "doc", "a"])], 0, 28.9);
+          resizeWin(W1, W2, 40.0, PUSH_DUR);
+          var l2 = typeLines([lst("lst2", ["n", "le", "a", "y", "ps", "he", "tor", "way"])], rowTop(1, 0), 40.4);
+
+          // ---- the comprehension, as a row of segments that slide apart for each insertion ----
+          // Every piece sits on its own line, parked at a column; inserting something is a move
+          // of everything to its right, which is what the editor does anyway.
+          var CY = rowTop(2, 1);
+          function seg(tokens) {
+            var r = addLine(tokens, CY);
+            r.el.style.display = "inline-block";
+            return r;
+          }
+          function park(r, col, at) { tl.set(r.el, { x: col * CW }, at); }
+          function slide(r, from, to, at) {
+            tl.fromTo(r.el, { x: from * CW }, { x: to * CW, duration: PUSH_DUR, ease: "power2.inOut",
+                                               immediateRender: false }, at);
+          }
+          var sBr = seg([[D, "[ "]]), sFor = seg([[K, "for "]]), sI = seg([[D, "i"]]);
+          var sIn = seg([[D, " "], [K, "in "]]), sL1 = seg([[D, "lst1"]]), sEnd = seg([[D, " ]"]]);
+          var sZip = seg([[B, "zip"]]), sArgs = seg([[D, "(lst1, lst2)"]]);
+          var sJ = seg([[D, ",j"]]), sPair = seg([[D, "(i,j) "]]), sRes = seg([[D, "res = "]]);
+
+          resizeWin(W2, W3, 51.8, PUSH_DUR);
+          // 1. the skeleton, with the list he already has
+          var A1 = 52.5;
+          [[sBr, 0], [sFor, 2], [sI, 6], [sIn, 7], [sL1, 11], [sEnd, 15]].forEach(function (g) { park(g[0], g[1], 0); });
+          var at = typeChars(sBr.chars, A1);
+          at = typeChars(sFor.chars, at);
+          at = typeChars(sI.chars, at);
+          at = typeChars(sIn.chars, at);
+          at = typeChars(sL1.chars, at);
+          typeChars(sEnd.chars, at);
+
+          // 2. "not one list - zip" : lst1 goes, zip takes its place, the bracket closes up
+          var A2 = 55.8;
+          tl.fromTo(sL1.el, { autoAlpha: 1, scale: 1, transformOrigin: "50% 60%" },
+                            { autoAlpha: 0, scale: 0.4, duration: 0.22, ease: "power2.in", immediateRender: false }, A2);
+          park(sZip, 11, 0);
+          typeChars(sZip.chars, A2 + 0.25);
+          slide(sEnd, 15, 14, A2 + 0.3);
+
+          // 3. zip takes both lists
+          var A3 = 58.0;
+          park(sArgs, 14, 0);
+          typeChars(sArgs.chars, A3);
+          slide(sEnd, 14, 26, A3);
+
+          // 4. each pair arrives as two values, so i becomes i,j
+          var A4 = 60.6;
+          park(sJ, 7, 0);
+          typeChars(sJ.chars, A4);
+          [[sIn, 7, 9], [sZip, 11, 13], [sArgs, 14, 16], [sEnd, 26, 28]].forEach(function (g) {
+            slide(g[0], g[1], g[2], A4);
+          });
+
+          // 5. what we want out of each pair goes in front
+          var A5 = 62.6;
+          park(sPair, 2, 0);
+          typeChars(sPair.chars, A5);
+          [[sFor, 2, 8], [sI, 6, 12], [sJ, 7, 13], [sIn, 9, 15], [sZip, 13, 19], [sArgs, 16, 22],
+           [sEnd, 28, 34]].forEach(function (g) { slide(g[0], g[1], g[2], A5); });
+
+          // 6. and the whole thing is stored - the name is written last
+          var A6 = 65.0;
+          park(sRes, 0, 0);
+          typeChars(sRes.chars, A6);
+          [[sBr, 0, 6], [sPair, 2, 8], [sFor, 8, 14], [sI, 12, 18], [sJ, 13, 19], [sIn, 15, 21],
+           [sZip, 19, 25], [sArgs, 22, 28], [sEnd, 34, 40]].forEach(function (g) { slide(g[0], g[1], g[2], A6); });
+
+          // 7. and printed
+          resizeWin(W3, W4, 66.8, PUSH_DUR);
+          var pr = typeLines([[[B, "print"], [D, "("], [D, "res"], [D, ")"]]], rowTop(3, 2), 67.2);
+
+          // 8. "we don't want the pair, we want them joined" - (i,j) becomes i+j and the
+          // line closes up by two columns
+          var A8 = 69.4;
+          var sCat = seg([[D, "i+j "]]);
+          park(sCat, 8, 0);
+          tl.fromTo(sPair.el, { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.3, ease: "power1.in",
+                                                  immediateRender: false }, A8);
+          typeChars(sCat.chars, A8 + 0.35);
+          [[sFor, 14, 12], [sI, 18, 16], [sJ, 19, 17], [sIn, 21, 19], [sZip, 25, 23],
+           [sArgs, 28, 26], [sEnd, 40, 38]].forEach(function (g) { slide(g[0], g[1], g[2], A8 + 0.5); });
+
+          // ---- the program runs: the comprehension line is lit for the whole pass ----
+          var RUN = 73.6, STEP = 1.4, N8 = 8;
+          var hlRes = hlBar(rowTop(2, 1));
+          lit(hlRes, RUN - 0.5, RUN + N8 * STEP + 0.6);
+
+          // ---- 9. the eight words are joined into one string ----
+          // print(res) drops a line to make room, the way an editor would.
+          var W5 = pose(54, 5, 3, 49, 105), W6 = pose(54, 6, 3, 49, 105);
+          var JOIN_AT = 86.0;
+          resizeWin(W4, W5, JOIN_AT, PUSH_DUR);
+          tl.fromTo(pr[0].el, { y: 0 }, { y: LINE_H + BLANK_H, duration: PUSH_DUR,
+                                          ease: "power2.inOut", immediateRender: false }, JOIN_AT);
+          var sj = typeLines([[[D, "s = "], [S, "'-'"], [D, "."], [B, "join"], [D, "("],
+                               [D, "res"], [D, ")"]]], rowTop(3, 2), JOIN_AT + 0.4);
+
+          resizeWin(W5, W6, 88.6, PUSH_DUR);
+          var ps = typeLines([[[B, "print"], [D, "("], [D, "s"], [D, ")"]]], rowTop(5, 3), 89.0);
+
+          // the join line is lit while s is being filled, both times
+          var hlJoin = hlBar(rowTop(3, 2));
+          lit(hlJoin, 90.4, 92.6);
+          lit(hlJoin, 95.0, 97.2);
+
+          // ---- 10. "a hyphen is not what we want" - the separator becomes a space ----
+          var dash = sj[0].chars[5];
+          tl.fromTo(dash, { autoAlpha: 1, scale: 1, transformOrigin: "50% 60%" },
+                          { autoAlpha: 0, scale: 0.4, duration: 0.28, ease: "power2.in",
+                            immediateRender: false }, 94.0);
+
+          // ---- the frame clears so the next exercise has it ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut",
+                                               immediateRender: false }, 100.0);
+
+          // ---- Part 3: a sentence split into its words ----
+          // Everything from the zip exercise is set away while the root is dark; a fade-in
+          // brings back whatever is still on, so it has to be put away explicitly.
+          var CLEAR = 113.2, BACK = 114.0;
+          [l1[0], l2[0], sj[0], pr[0], ps[0], sBr, sFor, sI, sIn, sL1, sEnd, sZip, sArgs,
+           sJ, sPair, sRes, sCat].forEach(function (r) { tl.set(r.el, { autoAlpha: 0 }, CLEAR); });
+          [hlRes, hlJoin].forEach(function (e) { tl.set(e, { autoAlpha: 0 }, CLEAR); });
+
+          var V1 = pose(28, 1, 0, 49, 105), V2 = pose(28, 2, 1, 49, 105), V3 = pose(28, 3, 2, 49, 105);
+          // Only 28 columns now, so the window can stand at its full size.
+          tl.fromTo("#cw-stage", { scale: SC }, { scale: 1, duration: 0.01, ease: "none",
+                                                 immediateRender: false }, CLEAR);
+          setWin(V1, CLEAR);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut",
+                                               immediateRender: false }, BACK);
+
+          typeLines([[[D, "s = "], [S, "'Welcome to Tap Academy'"]]], 0, 114.4);
+
+          // "copy this for loop first" - the sentence is cut into words
+          resizeWin(V1, V2, 119.1, PUSH_DUR);
+          var ls = typeLines([[[D, "lst = "], [D, "s"], [D, "."], [B, "split"], [D, "()"]]],
+                             rowTop(1, 1), 119.5);
+          var hlSplit = hlBar(rowTop(1, 1));
+          lit(hlSplit, 121.3, 125.0);
+
+          resizeWin(V2, V3, 125.6, PUSH_DUR);
+          var pl = typeLines([[[B, "print"], [D, "("], [D, "lst"], [D, ")"]]], rowTop(2, 2), 126.0);
+
+          // ---- Part 4: the comprehension takes that line ----
+          // print(lst) has done its job, so the line it was on is where the answer is written.
+          var CZ = rowTop(2, 2);
+          function seg2(tokens) {
+            var r = addLine(tokens, CZ);
+            r.el.style.display = "inline-block";
+            return r;
+          }
+          var W40 = pose(40, 3, 2, 49, 105), W33 = pose(33, 3, 2, 49, 105);
+
+          tl.fromTo(pl[0].el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut",
+                                                immediateRender: false }, 128.6);
+
+          var zBr = seg2([[D, "[ "]]), zFor = seg2([[K, "for "]]), zI = seg2([[D, "i "]]);
+          var zIn = seg2([[K, "in "]]), zLst = seg2([[D, "lst"]]), zEnd = seg2([[D, " ]"]]);
+          var zB1 = seg2([[D, "__ "]]), zIf = seg2([[K, "if "]]), zB2 = seg2([[D, "__ "]]);
+          var zEl = seg2([[K, "else "]]), zB3 = seg2([[D, "__ "]]);
+          var zLen = seg2([[B, "len"], [D, "(i)>="], [N, "5"], [D, " "]]);
+
+          // 1. the empty shape first: a bracket, and the loop that will feed it
+          var Z1 = 130.0;
+          [[zBr, 0], [zFor, 2], [zI, 6], [zIn, 8], [zLst, 11], [zEnd, 14]].forEach(function (g) { park(g[0], g[1], 0); });
+          var zt = typeChars(zBr.chars, Z1);
+          zt = typeChars(zFor.chars, zt);
+          zt = typeChars(zI.chars, zt);
+          zt = typeChars(zIn.chars, zt);
+          zt = typeChars(zLst.chars, zt);
+          typeChars(zEnd.chars, zt);
+
+          // 2. "do we want if else here?" - the shape is written with blanks in it, and
+          // everything the loop needs moves out of its way
+          var Z2 = 134.4;
+          resizeWin(V3, W33, Z2 - 0.5, PUSH_DUR);
+          [[zB1, 2], [zIf, 5], [zB2, 8], [zEl, 11], [zB3, 16]].forEach(function (g) { park(g[0], g[1], 0); });
+          [[zFor, 2, 19], [zI, 6, 23], [zIn, 8, 25], [zLst, 11, 28], [zEnd, 14, 31]].forEach(function (g) {
+            slide(g[0], g[1], g[2], Z2 - 0.4);
+          });
+          zt = typeChars(zB1.chars, Z2);
+          zt = typeChars(zIf.chars, zt);
+          zt = typeChars(zB2.chars, zt);
+          zt = typeChars(zEl.chars, zt);
+          typeChars(zB3.chars, zt);
+
+          // 3. the test goes in the middle blank: a word of five letters or more
+          var Z3 = 139.2;
+          resizeWin(W33, W40, Z3 - 0.5, PUSH_DUR);
+          park(zLen, 8, 0);
+          tl.fromTo(zB2.el, { autoAlpha: 1, scale: 1, transformOrigin: "50% 60%" },
+                            { autoAlpha: 0, scale: 0.4, duration: 0.25, ease: "power2.in",
+                              immediateRender: false }, Z3 - 0.3);
+          typeChars(zLen.chars, Z3);
+          [[zEl, 11, 18], [zB3, 16, 23], [zFor, 19, 26], [zI, 23, 30], [zIn, 25, 32],
+           [zLst, 28, 35], [zEnd, 31, 38]].forEach(function (g) { slide(g[0], g[1], g[2], Z3 - 0.3); });
+
+          // ---- 4. a word of five letters or more comes down; the rest go up ----
+          var W47 = pose(47, 3, 2, 49, 105), W45 = pose(45, 4, 2, 49, 105);
+          var W45P = pose(45, 5, 3, 49, 105);
+          var zLow = seg2([[D, "i."], [B, "lower"], [D, "() "]]);
+          var zUpp = seg2([[D, "i."], [B, "upper"], [D, "()"]]);
+          var zRes = seg2([[D, "res = "]]);
+
+          var Z4 = 144.4;
+          // 47 columns is more than fits beside lst at full size, so the window eases down
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.86, duration: PUSH_DUR,
+                                                ease: "power2.inOut", immediateRender: false }, Z4 - 0.5);
+          resizeWin(W40, W47, Z4 - 0.5, PUSH_DUR);
+          park(zLow, 2, 0);
+          tl.fromTo(zB1.el, { autoAlpha: 1, scale: 1, transformOrigin: "50% 60%" },
+                            { autoAlpha: 0, scale: 0.4, duration: 0.25, ease: "power2.in",
+                              immediateRender: false }, Z4 - 0.3);
+          typeChars(zLow.chars, Z4);
+          [[zIf, 5, 12], [zLen, 8, 15], [zEl, 18, 25], [zB3, 23, 30], [zFor, 26, 33],
+           [zI, 30, 37], [zIn, 32, 39], [zLst, 35, 42], [zEnd, 38, 45]].forEach(function (g) {
+            slide(g[0], g[1], g[2], Z4 - 0.3);
+          });
+
+          // ---- 5. the other blank, and the loop drops to a line of its own ----
+          var Z5 = 149.0;
+          resizeWin(W47, W45, Z5 - 0.5, PUSH_DUR);
+          park(zUpp, 30, 0);
+          tl.fromTo(zB3.el, { autoAlpha: 1, scale: 1, transformOrigin: "50% 60%" },
+                            { autoAlpha: 0, scale: 0.4, duration: 0.25, ease: "power2.in",
+                              immediateRender: false }, Z5 - 0.3);
+          typeChars(zUpp.chars, Z5);
+          // the line is too long to read in one go, so it wraps under its opening bracket
+          [[zFor, 33, 8], [zI, 37, 12], [zIn, 39, 14], [zLst, 42, 17], [zEnd, 45, 20]].forEach(function (g) {
+            // the loop moves down first, so i.upper() is typed into clear space
+            slide(g[0], g[1], g[2], Z5 - 0.3);
+            tl.fromTo(g[0].el, { y: 0 }, { y: LINE_H, duration: PUSH_DUR, ease: "power2.inOut",
+                                           immediateRender: false }, Z5 - 0.3);
+          });
+
+          // ---- 6. and the whole thing is stored ----
+          var Z6 = 153.6;
+          park(zRes, 0, 0);
+          typeChars(zRes.chars, Z6);
+          [[zBr, 0, 6], [zLow, 2, 8], [zIf, 12, 18], [zLen, 15, 21], [zEl, 25, 31],
+           [zUpp, 30, 36]].forEach(function (g) { slide(g[0], g[1], g[2], Z6 - 0.3); });
+
+          resizeWin(W45, W45P, 156.4, PUSH_DUR);
+          typeLines([[[B, "print"], [D, "("], [D, "res"], [D, ")"]]], rowTop(4, 3), 156.8);
+
+          // ---- 7. it runs, a word at a time ----
+          var RUN2 = 160.0, STEP2 = 1.6;
+          var hlCase = hlBar(rowTop(2, 2));
+          lit(hlCase, RUN2 - 0.6, RUN2 + 4 * STEP2 + 0.5);
+          window.__timelines["code-window"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

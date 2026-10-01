@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>question b</title>
+  </head>
+  <body>
+    <template id="question-b-template">
+      <style>
+        /* the card sits a fifth smaller and higher up the frame */
+        #root {
+          transform: translateY(-120px) scale(0.8);
+          transform-origin: 960px 540px;
+          position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+        }
+        /* The practice question on the user's own card: the marker in its own tile beside a
+           rule, the task with its opening phrase picked out in amber, and the sample input and
+           output each on a labelled row. The syntax card carries the same treatment. */
+        #qb-card {
+          position: absolute; opacity: 0;
+          background: linear-gradient(145deg, #1a232c 0%, #0d131a 100%);
+          border: 1.5px solid #2a3642; border-radius: 44px;
+          box-shadow: 0 34px 90px rgba(0, 0, 0, 0.62);
+        }
+        #qb-mark {
+          position: absolute; opacity: 0; text-align: center;
+          background: linear-gradient(145deg, #2e3843, #1b232c);
+          border: 1px solid #3c4854; border-radius: 30px;
+          font-family: "SF Pro Display", "Inter", -apple-system, "Segoe UI", sans-serif;
+          font-weight: 700; color: #f3c896; font-size: 72px; line-height: 148px;
+        }
+        #qb-rule { position: absolute; opacity: 0; width: 2px; background: #2c3846; }
+        .qb-ask {
+          position: absolute; white-space: pre; color: #ffffff;
+          font-family: "SF Pro Display", "Inter", -apple-system, "Segoe UI", sans-serif;
+          font-weight: 700; letter-spacing: -0.01em; font-size: 62px; line-height: 80px;
+          text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.38), 0 3px 0 #141d27, 0 6px 0 #0c141d,
+                       0 9px 0 #070d14, 0 16px 26px rgba(0, 0, 0, 0.68);
+        }
+        .qb-key { color: #ffffff; }   /* the question reads in one colour */
+        /* the two sample rows */
+        .qb-chip {
+          position: absolute; opacity: 0; border-radius: 22px; text-align: center;
+          font-family: "SF Pro Display", "Inter", -apple-system, "Segoe UI", sans-serif;
+          font-weight: 700; color: #ffffff; font-size: 46px; line-height: 108px;
+        }
+        .qb-colon {
+          position: absolute; opacity: 0; text-align: center; color: #ffffff;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          font-size: 46px; line-height: 108px;
+        }
+        .qb-slot { position: absolute; opacity: 0; border-radius: 22px; border: 1.5px solid; }
+        .qb-val {
+          position: absolute; white-space: pre; color: #ffffff;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          font-size: 46px; line-height: 108px;
+          text-shadow: 0 2px 0 #0a1017, 0 4px 0 #060b10, 0 7px 12px rgba(0, 0, 0, 0.55);
+        }
+        .qb-in { background: linear-gradient(160deg, #2166b8 0%, #16437a 100%); }
+        .qb-in-slot { border-color: #27384a; background: #101a24; }
+        .qb-out { background: linear-gradient(160deg, #1f8060 0%, #11533f 100%); }
+        .qb-out-slot { border-color: #1e4a3a; background: #0d1a16; }
+        .qb-num-in { color: #b07cf5; }
+        .qb-str { color: #e0c78b; }
+        .qb-num-out { color: #ff9f43; }
+      </style>
+
+      <div data-hf-id="hf-bkll" id="root" data-composition-id="question-b" data-width="1920" data-height="1080" data-duration="659">
+        <div data-hf-id="hf-p7l9" id="qb-card"><div data-hf-id="hf-ekvj" id="qb-mark">b.</div><div data-hf-id="hf-ydv5" id="qb-rule"></div></div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var card = document.getElementById("qb-card");
+          var tl = gsap.timeline({ paused: true });
+
+          var CW = 1560, CH = 600, PAD = 52, MONO = 46 * 0.6;
+          card.style.cssText += "left: " + Math.round((1920 - CW) / 2) + "px; top: " +
+            Math.round((1080 - CH) / 2) + "px; width: " + CW + "px; height: " + CH + "px;";
+          document.getElementById("qb-mark").style.cssText += "left: " + PAD + "px; top: 38px; width: 148px; height: 148px;";
+          document.getElementById("qb-rule").style.cssText += "left: " + (PAD + 184) + "px; top: 46px; height: 132px;";
+
+          function el(cls, css, text) {
+            var d = document.createElement("div");
+            d.className = cls;
+            d.style.cssText = css;
+            if (text !== undefined) d.textContent = text;
+            card.appendChild(d);
+            return d;
+          }
+          // a line typed one character at a time; `tone` marks the characters with their own colour
+          function typed(cls, css, tokens) {
+            var d = el(cls, css), chars = [];
+            tokens.forEach(function (tok) {
+              for (var i = 0; i < tok[1].length; i++) {
+                var s = document.createElement("span");
+                if (tok[0]) s.className = tok[0];
+                s.textContent = tok[1].charAt(i);
+                d.appendChild(s);
+                chars.push(s);
+              }
+            });
+            return chars;
+          }
+          function type(chars, at, rate) {
+            chars.forEach(function (sp, k) {
+              tl.fromTo(sp, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01, ease: "none" }, at + k * rate);
+            });
+            return at + chars.length * rate;
+          }
+
+          var TX = PAD + 224;
+          var q1 = typed("qb-ask", "left: " + TX + "px; top: 44px;",
+            [["qb-key", "Count the number"], [null, " of vowels"]]);
+          var q2 = typed("qb-ask", "left: " + TX + "px; top: 124px;", [[null, "present inside the given string"]]);
+
+          // Input and Output rows: the slot hugs the value it holds
+          var CHIP = 300, COL = PAD + CHIP + 22, SLOT = PAD + CHIP + 90;
+          var rows = [
+            { y: 300, name: "Input", tone: "qb-in", slot: "qb-in-slot", num: "qb-str", text: "'Hello World'" },
+            { y: 434, name: "Output", tone: "qb-out", slot: "qb-out-slot", num: "qb-num-out", text: "3" },
+          ];
+          var built = rows.map(function (r) {
+            var w = Math.round(r.text.length * MONO) + 72;
+            return {
+              chip: el("qb-chip " + r.tone, "left: " + PAD + "px; top: " + r.y + "px; width: " + CHIP + "px; height: 108px;", r.name),
+              colon: el("qb-colon", "left: " + COL + "px; top: " + r.y + "px; width: 60px;"),
+              slot: el("qb-slot " + r.slot, "left: " + SLOT + "px; top: " + r.y + "px; width: " + w + "px; height: 108px;"),
+              value: typed("qb-val", "left: " + (SLOT + 36) + "px; top: " + r.y + "px;",
+                r.text.split("").map(function (c) { return [(r.num === "qb-str" ? (c === "'" ? null : r.num) : (/[0-9]/.test(c) ? r.num : null)), c]; })),
+            };
+          });
+          built.forEach(function (b) { b.colon.textContent = ":"; });
+
+          var CARD_AT = 276.6, MARK_AT = 277.1, Q_AT = 277.6;
+
+          tl.fromTo(card, { opacity: 0, scale: 0.9, transformOrigin: "50% 50%" },
+                          { opacity: 1, scale: 1, duration: 0.65, ease: "back.out(1.5)" }, CARD_AT);
+          tl.fromTo("#qb-mark", { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" },
+                               { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.4)", immediateRender: false }, MARK_AT);
+          tl.fromTo("#qb-rule", { opacity: 0, scaleY: 0, transformOrigin: "50% 50%" },
+                               { opacity: 1, scaleY: 1, duration: 0.45, ease: "power2.out", immediateRender: false }, MARK_AT + 0.2);
+
+          var at = type(q1, Q_AT, 0.035);
+          at = type(q2, at + 0.18, 0.035);
+
+          // each sample row slides in as a piece, then its value is printed
+          built.forEach(function (b, i) {
+            var rowAt = at + 0.55 + i * 1.5;
+            [b.chip, b.slot].forEach(function (e) {
+              tl.fromTo(e, { opacity: 0, x: -26 }, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out", immediateRender: false }, rowAt);
+            });
+            tl.fromTo(b.colon, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out", immediateRender: false }, rowAt + 0.2);
+            type(b.value, rowAt + 0.45, 0.035);
+          });
+
+          // ---- the question clears so the vowel counter can be written ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 289.0);
+
+          window.__timelines["question-b"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

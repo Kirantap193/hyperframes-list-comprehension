@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>syntax card</title>
+  </head>
+  <body>
+    <template id="syntax-card-template">
+      <style>
+        #root { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        /* The list-comprehension syntax, written on its own panel in the bottom right - under
+           the res list and beside the output window, so the frame is used end to end. It is
+           shown twice: first with the expression and the loop, and again at the end with the
+           if condition added to it. */
+        #sc-panel {
+          position: absolute; opacity: 0;
+          background: linear-gradient(145deg, #1a232c 0%, #0d131a 100%);
+          border: 1.5px solid #2a3642; border-radius: 40px;
+          box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.45),
+                      0 10px 0 #070b10, 0 40px 100px rgba(0, 0, 0, 0.7);
+        }
+        #sc-pill {
+          position: absolute; opacity: 0;
+          background: linear-gradient(160deg, #2166b8 0%, #16437a 100%);
+          border: 1px solid #3a7fd0; border-radius: 20px;
+          box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.28), inset 0 -2px 0 rgba(0, 0, 0, 0.35),
+                      0 5px 0 #0d2a4c, 0 12px 20px rgba(0, 0, 0, 0.5);
+          text-shadow: 0 2px 0 #0d2a4c, 0 4px 6px rgba(0, 0, 0, 0.45);
+          font-family: "SF Pro Display", "Inter", -apple-system, "Segoe UI", sans-serif; font-weight: 700;
+          color: #ffffff; font-size: 42px; line-height: 62px; text-align: center; white-space: pre;
+        }
+        .sc-t {
+          position: absolute; top: 118px;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          white-space: pre; color: #ffffff;
+          font-size: 50px; line-height: 76px;
+          text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.30), 0 3px 0 #101922, 0 6px 0 #080e15,
+                       0 12px 20px rgba(0, 0, 0, 0.62);
+        }
+        .sc-kw { color: #ffae3d; }   /* for / if, as the reference card sets them */
+        .sc-in { color: #c099ff; }
+        .sc-num { color: #f5a97f; }
+        /* each named part: a tinted box, a brace under it, and its name */
+        .sc-box {
+          position: absolute; top: 126px; height: 60px; opacity: 0;
+          border: 3px solid; border-radius: 16px;
+          box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.22), inset 0 -3px 8px rgba(0, 0, 0, 0.35),
+                      0 6px 0 rgba(0, 0, 0, 0.45), 0 12px 22px rgba(0, 0, 0, 0.55);
+        }
+        .sc-brace { position: absolute; top: 200px; overflow: visible; opacity: 0; filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.6)); }
+        .sc-lb {
+          position: absolute; top: 230px; opacity: 0; text-align: center;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 600;
+          white-space: pre; font-size: 34px; line-height: 44px;
+          text-shadow: 0 2px 0 #0b1219, 0 4px 0 #070c11, 0 8px 14px rgba(0, 0, 0, 0.6);
+        }
+        .sc-expr { border-color: #f43f6e; background: linear-gradient(180deg, rgba(244, 63, 110, 0.26) 0%, rgba(244, 63, 110, 0.10) 100%); }
+        .sc-loop { border-color: #10b981; background: linear-gradient(180deg, rgba(16, 185, 129, 0.26) 0%, rgba(16, 185, 129, 0.10) 100%); }
+        .sc-cond { border-color: #ffae3d; background: linear-gradient(180deg, rgba(255, 174, 61, 0.26) 0%, rgba(255, 174, 61, 0.10) 100%); }
+        .sc-lb.sc-expr { color: #ff6b95; background: none; }
+        .sc-lb.sc-loop { color: #34d399; background: none; }
+        .sc-lb.sc-cond { color: #ffc46b; background: none; }
+        .sc-brace.sc-expr { color: #f43f6e; background: none; }
+        .sc-brace.sc-loop { color: #10b981; background: none; }
+        .sc-brace.sc-cond { color: #ffae3d; background: none; }
+      </style>
+
+      <div data-hf-id="hf-3al3" id="root" data-composition-id="syntax-card" data-width="1920" data-height="1080" data-duration="659">
+        <div data-hf-id="hf-vkgy" id="sc-panel"><div data-hf-id="hf-vf3y" id="sc-pill">Syntax</div></div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var CHAR = 0.075;
+          var panel = document.getElementById("sc-panel");
+          var tl = gsap.timeline({ paused: true });
+
+          // The panel fills the corner under the res list, to the right of the output window.
+          // It is drawn at the width the finished syntax needs, so nothing has to move later.
+          var FS = 50, CW = FS * 0.6, PAD = 44;
+          // the panel hugs the syntax it is holding, so there is no dead space on the right;
+          // it is widened while it is off screen, before each longer version arrives
+          function fit(n) { return Math.round(n * CW) + 2 * PAD + 68; }
+          var PW = fit(35);
+          panel.style.cssText += "left: 49px; top: 520px; width: " + fit(20) + "px; height: 302px;";
+          document.getElementById("sc-pill").style.cssText += "left: " + PAD + "px; top: 26px; width: 210px;";
+
+          function spans(el, tokens) {
+            var chars = [];
+            tokens.forEach(function (tok) {
+              for (var i = 0; i < tok[1].length; i++) {
+                var s = document.createElement("span");
+                if (tok[0]) s.className = tok[0];
+                s.textContent = tok[1].charAt(i);
+                el.appendChild(s);
+                chars.push(s);
+              }
+            });
+            return chars;
+          }
+          function run(id, col, tokens) {
+            var el = document.createElement("div");
+            el.id = id;
+            el.className = "sc-t";
+            el.style.left = (PAD + col * CW) + "px";
+            panel.appendChild(el);
+            return { el: el, chars: spans(el, tokens) };
+          }
+          // A horizontal curly brace, drawn on as if by hand.
+          function brace(id, tone, col, cols) {
+            var w = Math.round(cols * CW + 20), r = 11, half = Math.round(w / 2) - 2 * r;
+            var d = "M 0 0 q 0 " + r + " " + r + " " + r + " h " + half + " q " + r + " 0 " + r + " " + r +
+              " q 0 -" + r + " " + r + " -" + r + " h " + half + " q " + r + " 0 " + r + " -" + r;
+            var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("class", "sc-brace " + tone);
+            svg.setAttribute("width", w);
+            svg.setAttribute("height", 26);
+            svg.setAttribute("data-layout-allow-overflow", "true");
+            svg.style.left = (PAD + col * CW - 10) + "px";
+            svg.innerHTML = '<path id="' + id + '" d="' + d + '" fill="none" stroke="currentColor" ' +
+              'stroke-width="3.5" stroke-linecap="round" />';
+            panel.appendChild(svg);
+            return { svg: svg, path: svg.firstChild };
+          }
+          function box(id, tone, col, cols) {
+            var el = document.createElement("div");
+            el.id = id;
+            el.className = "sc-box " + tone;
+            el.style.cssText = "left: " + (PAD + col * CW - 10) + "px; width: " + (cols * CW + 14) +
+              "px; transform-origin: 50% 50%;";
+            panel.appendChild(el);
+            return el;
+          }
+          function label(id, tone, col, cols, text) {
+            var el = document.createElement("div");
+            el.id = id;
+            el.className = "sc-lb " + tone;
+            el.style.cssText = "left: " + (PAD + col * CW - 10) + "px; width: " + (cols * CW + 20) +
+              "px; transform-origin: 50% 50%;";
+            el.textContent = text;
+            panel.appendChild(el);
+            return el;
+          }
+
+          var K = "sc-kw", I = "sc-in";
+          // "[" holds column 0; everything else is pushed right as the syntax is written.
+          var open  = run("sc-open",  0, [[null, "["]]);
+          var close = run("sc-close", 2, [[null, "]"]]);
+          var loop  = run("sc-loop-t", 2, [[K, "for "], [null, "i "], [I, "in "], [null, "lst "]]);
+          var expr  = run("sc-expr-t", 2, [[null, "i*i "]]);
+          var bxExpr = box("sc-bx-expr", "sc-expr", 2, 3), brExpr = brace("sc-br-expr", "sc-expr", 2, 3);
+          var bxLoop = box("sc-bx-loop", "sc-loop", 6, 12), brLoop = brace("sc-br-loop", "sc-loop", 6, 12);
+          var lbExpr = label("sc-lb-expr", "sc-expr", 2, 3, "expression");
+          var lbLoop = label("sc-lb-loop", "sc-loop", 6, 12, "loop");
+
+          function reveal(sp, at) {
+            tl.fromTo(sp, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01, ease: "none" }, at);
+          }
+          // the box stamps down, its brace draws itself underneath, and the name snaps in
+          function highlight(bx, br, lb, chars, at) {
+            tl.fromTo(bx, { opacity: 0 }, { opacity: 1, duration: 0.14, ease: "power2.out", immediateRender: false }, at);
+            tl.fromTo(bx, { scale: 1.4, rotation: -3 }, { scale: 1, rotation: 0, duration: 0.55, ease: "back.out(2.8)", immediateRender: false }, at);
+            chars.forEach(function (sp, k) {
+              tl.fromTo(sp, { y: 0 }, { y: -10, duration: 0.14, ease: "power2.out", immediateRender: false }, at + 0.3 + k * 0.022);
+              tl.fromTo(sp, { y: -10 }, { y: 0, duration: 0.7, ease: "elastic.out(1, 0.4)", immediateRender: false }, at + 0.44 + k * 0.022);
+            });
+            var len = Math.ceil(br.path.getTotalLength()) + 2;
+            br.path.setAttribute("stroke-dasharray", len + " " + len);
+            tl.fromTo(br.svg, { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none", immediateRender: false }, at + 0.35);
+            tl.fromTo(br.path, { attr: { "stroke-dashoffset": len } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.5, ease: "power2.out", immediateRender: false }, at + 0.35);
+            tl.fromTo(lb, { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(3)", immediateRender: false }, at + 0.62);
+          }
+
+          var PANEL_AT = 52.2, POP_AT = 53.0, LOOP_AT = 54.0;
+          var EXPR_AT = 55.8, HL_EXPR = 57.0, HL_LOOP = 58.2;
+
+          // the panel and its title land first
+          tl.fromTo(panel, { opacity: 0, scale: 0.85, transformOrigin: "0% 50%" },
+                           { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.6)" }, PANEL_AT);
+          tl.fromTo("#sc-pill", { opacity: 0, scale: 0.5, transformOrigin: "0% 50%" },
+                                { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(2.4)", immediateRender: false }, PANEL_AT + 0.35);
+
+          // "you will have to put a square bracket" - the empty pair lands under it
+          [open, close].forEach(function (r) {
+            tl.fromTo(r.el, { autoAlpha: 0, scale: 0.4, transformOrigin: "50% 50%" },
+                            { autoAlpha: 1, scale: 1, duration: 0.55, ease: "back.out(2)" }, POP_AT);
+          });
+          // "inside that square bracket ... for i in lst" - the closing bracket is pushed right
+          loop.chars.forEach(function (sp, k) {
+            reveal(sp, LOOP_AT + k * CHAR);
+            tl.set(close.el, { x: (k + 1) * CW }, LOOP_AT + k * CHAR);
+          });
+          // "whatever operation you want to do ... i into i" - it goes right at the front
+          expr.chars.forEach(function (sp, k) {
+            reveal(sp, EXPR_AT + k * CHAR);
+            tl.set(loop.el, { x: (k + 1) * CW }, EXPR_AT + k * CHAR);
+            tl.set(close.el, { x: (loop.chars.length + k + 1) * CW }, EXPR_AT + k * CHAR);
+          });
+          highlight(bxExpr, brExpr, lbExpr, expr.chars.slice(0, 3), HL_EXPR);
+          highlight(bxLoop, brLoop, lbLoop, loop.chars.slice(0, 12), HL_LOOP);
+
+          // the card leaves with the rest of the squares lesson
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 62.0);
+
+          // ---- the same card again at the end, with the condition added to it ----
+          // "Same if condition should be written over here. After writing the for loop, I need
+          // to write the if condition."
+          var BACK_AT = 168.0, IF_AT = 169.6, HL_COND = 172.0;
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK_AT);
+
+          tl.set(panel, { width: fit(31) }, 167.6);
+          var cond = run("sc-cond-t", 19, [[K, "if"], [null, "(i%2=="], ["sc-num", "0"], [null, ")"]]);
+          cond.chars.forEach(function (sp, k) {
+            reveal(sp, IF_AT + k * CHAR);
+            tl.set(close.el, { x: (17 + k + 2) * CW }, IF_AT + k * CHAR);
+          });
+          var bxCond = box("sc-bx-cond", "sc-cond", 19, 10), brCond = brace("sc-br-cond", "sc-cond", 19, 10);
+          var lbCond = label("sc-lb-cond", "sc-cond", 19, 10, "if condition");
+          highlight(bxCond, brCond, lbCond, cond.chars, HL_COND);
+
+          // ---- The card leaves with the coding window when the if-else lesson starts ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 179.0);
+
+          // ---- The same card once more, for "i if i%2==0 else 0" ----
+          // The whole if-else takes the expression slot, so this time the two named parts are
+          // the if else and the loop.
+          var RESET3 = 222.0, BACK3 = 223.0, POP3 = 224.2, LOOP3 = 225.2, IFE3 = 227.0;
+          var HL_IFE = 229.4, HL_LOOP3 = 230.8;
+
+          [loop.el, expr.el, cond.el, bxExpr, bxLoop, bxCond, brExpr.svg, brLoop.svg, brCond.svg,
+           lbExpr, lbLoop, lbCond].forEach(function (el) { tl.set(el, { autoAlpha: 0 }, RESET3); });
+          tl.set(close.el, { x: 0 }, RESET3);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK3);
+
+          tl.set(panel, { width: fit(35) }, 222.2);
+          var loop3 = run("sc-loop3", 2, [[K, "for "], [null, "i "], [I, "in "], [null, "lst "]]);
+          var ife3  = run("sc-ife3",  2, [[null, "i "], [K, "if "], [null, "i%2=="], ["sc-num", "0"],
+                                          [K, " else "], ["sc-num", "0"], [null, " "]]);
+          var bxIfe = box("sc-bx-ife", "sc-expr", 2, 18), brIfe = brace("sc-br-ife", "sc-expr", 2, 18);
+          var bxLp3 = box("sc-bx-lp3", "sc-loop", 21, 12), brLp3 = brace("sc-br-lp3", "sc-loop", 21, 12);
+          var lbIfe = label("sc-lb-ife", "sc-expr", 2, 18, "if else");
+          var lbLp3 = label("sc-lb-lp3", "sc-loop", 21, 12, "loop");
+
+          // the square bracket first, as always
+          [open, close].forEach(function (r) {
+            tl.fromTo(r.el, { autoAlpha: 0, scale: 0.4, transformOrigin: "50% 50%" },
+                            { autoAlpha: 1, scale: 1, duration: 0.55, ease: "back.out(2)", immediateRender: false }, POP3);
+          });
+          loop3.chars.forEach(function (sp, k) {
+            reveal(sp, LOOP3 + k * CHAR);
+            tl.set(close.el, { x: (k + 1) * CW }, LOOP3 + k * CHAR);
+          });
+          ife3.chars.forEach(function (sp, k) {
+            reveal(sp, IFE3 + k * CHAR);
+            tl.set(loop3.el, { x: (k + 1) * CW }, IFE3 + k * CHAR);
+            tl.set(close.el, { x: (loop3.chars.length + k + 1) * CW }, IFE3 + k * CHAR);
+          });
+          highlight(bxIfe, brIfe, lbIfe, ife3.chars.slice(0, 18), HL_IFE);
+          highlight(bxLp3, brLp3, lbLp3, loop3.chars.slice(0, 12), HL_LOOP3);
+
+          // ---- only the lists are left for the closing pair row ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 239.0);
+
+          window.__timelines["syntax-card"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

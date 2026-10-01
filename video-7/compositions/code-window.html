@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>code window</title>
+  </head>
+  <body>
+    <template id="code-window-template">
+      <style>
+        #root {
+          /* the whole window sits a little smaller on the frame, anchored at its top left */
+          transform: scale(0.66);
+          transform-origin: 49px 105px;
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: none;
+          /* The approved code colours (video-5-part2, the user's reference frame). */
+          --cw-default: #ffffff;   /* the same white as the output window, so lst and res read clearly */
+          --cw-keyword: #c099ff;
+          --cw-string: #e0c78b;
+          --cw-number: #f5a97f;
+          --cw-builtin: #8fb3ff;
+          --cw-comment: #8c8c8c;
+        }
+        .cw-stage { position: absolute; inset: 0; transform-origin: 50% 50%; }
+        .cw-win { position: absolute; left: 0; top: 0; width: 856px; height: 541px; opacity: 0; transform-origin: 0 0; }
+        .cw-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+        .cw-titlebar { position: absolute; left: 22px; top: 11.2px; width: 245.5px; height: 37.6px; }
+        /* Code panel at (8, 63); 20px / 16px inner padding; 36px text on a 46px grid. */
+        /* the line the loop is standing on while the trace is being written */
+        .cw-hl {
+          position: absolute; left: -10px; opacity: 0;
+          background: rgba(143, 179, 255, 0.24);
+          border-left: 6px solid #a8c4ff; border-radius: 6px;
+        }
+        .cw-code {
+          position: absolute;
+          left: 28px;
+          top: 79px;
+          font-family: "JetBrains Mono", Consolas, monospace;
+          font-weight: 400;
+          font-size: 52px;
+          line-height: 66px;
+          color: var(--cw-default);
+          font-variant-ligatures: none; /* "==" must read as two equals signs */
+        }
+        .cw-line { position: absolute; left: 0; height: 46px; white-space: pre; }
+        .cw-kw { color: var(--cw-keyword); }
+        .cw-str { color: var(--cw-string); font-style: italic; }
+        .cw-num { color: var(--cw-number); }
+        .cw-bi { color: var(--cw-builtin); }
+        .cw-com, .cw-comment span { color: var(--cw-comment); }
+      </style>
+
+      <div data-hf-id="hf-bjih" id="root" data-composition-id="code-window" data-width="1920" data-height="1080" data-duration="659">
+        <div data-hf-id="hf-lzc7" id="cw-stage" class="cw-stage" data-layout-allow-overflow="true">
+          <div data-hf-id="hf-8cnz" id="cw-win" class="cw-win" data-layout-allow-overflow="true">
+            <svg data-hf-id="hf-kr93" id="cw-svg" class="cw-svg" width="856" height="541" xmlns="http://www.w3.org/2000/svg">
+              <defs data-hf-id="hf-mh0t">
+                <clippath data-hf-id="hf-wlca" id="cw-clip"><rect data-hf-id="hf-ojxc" id="cw-clip-rect" x="0" y="0" width="856" height="541" rx="20" /></clippath>
+              </defs>
+              <rect data-hf-id="hf-yhl5" id="cw-outline" x="-17" y="-17" width="890" height="575" rx="37" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 13" />
+              <rect data-hf-id="hf-l2bh" id="cw-body" x="0" y="0" width="856" height="541" rx="20" fill="#101b2c" />
+              <g data-hf-id="hf-q2we" clip-path="url(#cw-clip)">
+                <rect data-hf-id="hf-rify" id="cw-title" x="0" y="0" width="856" height="60" fill="#1b2536" />
+                <rect data-hf-id="hf-pp9u" id="cw-sep" x="0" y="59" width="856" height="1.5" fill="#2a3649" />
+              </g>
+              <rect data-hf-id="hf-i1qo" id="cw-panel" x="8" y="63" width="840" height="470" rx="10" fill="#101b2c" stroke="#26344b" stroke-width="1.5" />
+            </svg>
+            <img data-hf-id="hf-jk6i" class="cw-titlebar" src="assets/code-titlebar.webp" alt="Traffic lights and the title Main.py">
+            <div data-hf-id="hf-de22" id="cw-code" class="cw-code"></div>
+          </div>
+        </div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          // Seconds (this slot starts at global 0).
+          var POP_AT = 10.0, POP_DUR = 0.7;             // part 2: the code window pops up on the left
+          var CHAR = 0.075, NEWLINE = 0.25;             // the slow typing rhythm (PPT clicks later)
+          var LINE_H = 66, BLANK_H = 33, CW = 31.2;     // one column = 31.2px at 52px
+          var PUSH_DUR = 0.4;                           // a new line pushes the lines below it down
+
+          // Top of a line with `code` code lines and `blank` half-height blank lines above it.
+          function rowTop(code, blank) { return code * LINE_H + blank * BLANK_H; }
+          // Window pose for `cols` columns and `code` + `blank` lines, at (x, y); y null = centred
+          // vertically. Sized from part 1's content when it arrives.
+          function pose(cols, code, blank, x, y) {
+            var pw = Math.ceil(cols * CW + 40), ph = rowTop(code, blank) + 32;
+            var bh = ph + 71;
+            return { x: x, y: y == null ? 540 - bh / 2 : y, bw: pw + 16, bh: bh, pw: pw, ph: ph };
+          }
+          var TYPE_AT = 10.9;                           // ... and lst = [5, 7, 1, 2, 4] types in
+          // Part 2's pose: one line of 21 columns, at the top left (outline 32px from the edge,
+          // its top level with the index row of the list on the right). The window is as large as
+          // the space beside the lists allows, so the code reads from the back of the room.
+          var P1 = pose(21, 1, 0, 49, 105);
+
+          var D = "", K = "cw-kw", S = "cw-str", N = "cw-num", B = "cw-bi", C = "cw-com";
+          var tl = gsap.timeline({ paused: true });
+          var code = document.getElementById("cw-code");
+
+          function addLine(tokens, top) {
+            var line = document.createElement("div");
+            line.className = "cw-line";
+            line.style.top = top + "px";
+            code.appendChild(line);
+            var chars = [];
+            tokens.forEach(function (tok) {
+              for (var i = 0; i < tok[1].length; i++) {
+                var span = document.createElement("span");
+                if (tok[0]) span.className = tok[0];
+                span.textContent = tok[1].charAt(i);
+                line.appendChild(span);
+                chars.push(span);
+              }
+            });
+            return { el: line, chars: chars };
+          }
+          function reveal(span, at) {
+            tl.fromTo(span, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01, ease: "none" }, at);
+          }
+          // Type characters left to right; indentation is skipped. Returns the next time.
+          function typeChars(chars, at) {
+            var leading = true;
+            chars.forEach(function (span) {
+              if (leading && span.textContent === " ") return;
+              leading = false;
+              reveal(span, at);
+              at += CHAR;
+            });
+            return at;
+          }
+          // One line. An assignment types its value first, then "=", then the name (10, =, a).
+          function typeLine(line, at) {
+            var text = line.chars.map(function (s) { return s.textContent; }).join("");
+            var m = /^(\s*)([A-Za-z_][\w.]*(?:, [A-Za-z_][\w.]*)*) = (?!=)/.exec(text);
+            if (!m) return typeChars(line.chars, at);
+            var lhsEnd = m[1].length + m[2].length, rhsAt = m[0].length;
+            at = typeChars(line.chars.slice(rhsAt), at);
+            at = typeChars(line.chars.slice(lhsEnd, rhsAt), at);
+            return typeChars(line.chars.slice(m[1].length, lhsEnd), at);
+          }
+          // Type code lines (token rows; null = a half-height blank line) from `top`.
+          function typeLines(rows, top, at) {
+            var lines = [];
+            rows.forEach(function (tokens) {
+              if (tokens) {
+                var line = addLine(tokens, top);
+                lines.push(line);
+                at = typeLine(line, at);
+                top += LINE_H;
+              } else {
+                top += BLANK_H;
+              }
+              at += NEWLINE;
+            });
+            lines.end = at;
+            return lines;
+          }
+          // The window's vector chrome at a pose, and a reshape (and move) between two poses.
+          function chrome(p) {
+            return {
+              "cw-outline": { width: p.bw + 34, height: p.bh + 34 },
+              "cw-body": { width: p.bw, height: p.bh },
+              "cw-clip-rect": { width: p.bw, height: p.bh },
+              "cw-title": { width: p.bw },
+              "cw-sep": { width: p.bw },
+              "cw-panel": { width: p.pw, height: p.ph },
+            };
+          }
+          function resizeWin(from, to, at, dur) {
+            var a = chrome(from), b = chrome(to);
+            Object.keys(a).forEach(function (id) {
+              tl.fromTo("#" + id, { attr: a[id] }, { attr: b[id], duration: dur, ease: "power2.inOut", immediateRender: false }, at);
+            });
+            if (from.x !== to.x || from.y !== to.y) {
+              tl.fromTo("#cw-win", { x: from.x, y: from.y }, { x: to.x, y: to.y, duration: dur, ease: "power2.inOut", immediateRender: false }, at);
+            }
+          }
+
+          // Baseline pose (hidden in CSS until the pop), then the pop-up.
+          tl.set("#cw-win", { x: P1.x, y: P1.y }, 0);
+          var base = chrome(P1);
+          Object.keys(base).forEach(function (id) { tl.set("#" + id, { attr: base[id] }, 0); });
+          tl.fromTo("#cw-stage", { scale: 0.3 }, { scale: 1, duration: POP_DUR, ease: "back.out(1.3)" }, POP_AT);
+          tl.fromTo("#cw-win", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out", immediateRender: false }, POP_AT);
+
+          // the window pops about its own centre, not the frame's
+          document.getElementById("cw-stage").style.transformOrigin =
+            (P1.x + P1.bw / 2) + "px " + (P1.y + P1.bh / 2) + "px";
+
+          // ---- Part 2: the list is written in code ----
+          var lstLine = typeLines([
+            [[D, "lst = ["], [N, "5"], [D, ", "], [N, "7"], [D, ", "], [N, "1"], [D, ", "], [N, "2"], [D, ", "], [N, "4"], [D, "]"]],
+          ], 0, TYPE_AT);
+
+          // ---- Part 3: the for loop that squares each element ----
+          // The teacher's order (his own words): the loop first, then the list to collect into,
+          // which is written ABOVE the loop, and finally the append inside it.
+          var P2 = pose(21, 2, 1, 49, 105), P3 = pose(21, 3, 1, 49, 105), P4 = pose(21, 4, 1, 49, 105);
+          var FOR_AT = 24.1, RES_AT = 26.4, APP_AT = 28.2;
+
+          // "normal for loop ... if we say for i in lst" - i is each element, not an index
+          resizeWin(P1, P2, 23.5, PUSH_DUR);
+          var forLine = typeLines([
+            [[K, "for "], [D, "i "], [K, "in "], [D, "lst:"]],
+          ], rowTop(1, 1), FOR_AT);
+
+          // "I need to store this inside a list. Which list?" - res = [] goes in above the loop,
+          // so the loop moves down a line as room is made for it.
+          resizeWin(P2, P3, 25.8, PUSH_DUR);
+          tl.fromTo(forLine[0].el, { y: 0 }, { y: LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, 25.8);
+          var resLine = typeLines([
+            [[D, "res = []"]],
+          ], rowTop(1, 1), RES_AT);
+
+          // "how do I put this inside? ... dot append ... and inside append, i into i"
+          resizeWin(P3, P4, 27.6, PUSH_DUR);
+          var appLine = typeLines([
+            [[D, "    res."], [B, "append"], [D, "(i*i)"]],
+          ], rowTop(3, 1), APP_AT);
+
+          // ---- Part 5: the result is printed ----
+          var P5 = pose(21, 5, 2, 49, 105), PRINT_AT = 38.0;
+          resizeWin(P4, P5, 37.4, PUSH_DUR);
+          var printLine = typeLines([
+            [[B, "print"], [D, "(res)"]],
+          ], rowTop(4, 2), PRINT_AT);
+
+          // ---- Part 6: the same thing as a list comprehension ----
+          // "Rather than writing four lines, we can write it in one." The loop and the append
+          // leave, and the comprehension is built inside the square brackets that are already
+          // there - in the teacher's order: the brackets, then the same for loop inside them,
+          // then the operation (i into i) at the front.
+          var FADE_AT = 43.5, CLOSE_AT = 44.3;
+          var LOOP_IN_AT = 45.2, WIDE_AT = 46.6, SQ_AT = 47.1;
+          var P6 = pose(21, 3, 2, 49, 105), P7 = pose(24, 3, 2, 49, 105);
+
+          // the two loop lines go; the print closes up behind them
+          [forLine[0].el, appLine[0].el].forEach(function (el) {
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, FADE_AT);
+          });
+          resizeWin(P5, P6, CLOSE_AT, PUSH_DUR);
+          tl.fromTo(printLine[0].el, { y: 0 }, { y: -2 * LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, CLOSE_AT);
+
+          // "whatever for loop you were writing, the same one goes inside the square bracket" -
+          // the closing bracket is pushed right one column per character typed.
+          var closeBr = resLine[0].chars[7];
+          var loopIn = addLine([[D, "       "], [K, "for "], [D, "i "], [K, "in "], [D, "lst"]], rowTop(1, 1));
+          tl.set(closeBr, { display: "inline-block" }, LOOP_IN_AT);
+          var loopChars = loopIn.chars.slice(7);
+          loopChars.forEach(function (sp, k) {
+            reveal(sp, LOOP_IN_AT + k * CHAR);
+            tl.set(closeBr, { x: (k + 1) * CW }, LOOP_IN_AT + k * CHAR);
+          });
+
+          // "what is the operation? i into i - that comes right at the front, and it appends
+          // by itself." Room is made for it first, then it is typed.
+          resizeWin(P6, P7, WIDE_AT, PUSH_DUR);
+          var sqIn = addLine([[D, "       i*i "]], rowTop(1, 1));
+          var sqChars = sqIn.chars.slice(7);
+          sqChars.forEach(function (sp, k) {
+            reveal(sp, SQ_AT + k * CHAR);
+            tl.set(loopIn.el, { x: (k + 1) * CW }, SQ_AT + k * CHAR);
+            tl.set(closeBr, { x: (loopChars.length + k + 1) * CW }, SQ_AT + k * CHAR);
+          });
+
+          // ---- Part 7: the same window comes back for the even-numbers program ----
+          // Everything the squares lesson wrote is dropped while the frame is dark, the window
+          // is snapped back to its one-line pose, and only `lst = [5, 7, 1, 2, 4]` is left.
+          function setWin(pp, at) {
+            var c = chrome(pp);
+            Object.keys(c).forEach(function (id) { tl.set("#" + id, { attr: c[id] }, at); });
+            tl.set("#cw-win", { x: pp.x, y: pp.y }, at);
+          }
+          var RESET_AT = 73.9, BACK_AT = 74.8;
+          [resLine[0].el, forLine[0].el, appLine[0].el, printLine[0].el, loopIn.el, sqIn.el]
+            .forEach(function (el) { tl.set(el, { autoAlpha: 0 }, RESET_AT); });
+          setWin(P1, RESET_AT);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK_AT);
+
+          // The teacher's order again: the list to collect into, the loop, the append - and the
+          // if condition goes in last, which pushes the append down a line and indents it.
+          var Q2 = pose(21, 2, 1, 49, 105), Q3 = pose(21, 3, 1, 49, 105), Q4 = pose(21, 4, 1, 49, 105);
+          var Q5 = pose(21, 5, 1, 49, 105), Q6 = pose(21, 6, 2, 49, 105);
+          var RES7_AT = 76.4, FOR7_AT = 78.6, APP7_AT = 80.9, IF7_AT = 83.6;
+
+          resizeWin(P1, Q2, RES7_AT - 0.7, PUSH_DUR);
+          var res7 = typeLines([[[D, "res = []"]]], rowTop(1, 1), RES7_AT);
+
+          resizeWin(Q2, Q3, FOR7_AT - 0.7, PUSH_DUR);
+          var for7 = typeLines([[[K, "for "], [D, "i "], [K, "in "], [D, "lst:"]]], rowTop(2, 1), FOR7_AT);
+
+          resizeWin(Q3, Q4, APP7_AT - 0.7, PUSH_DUR);
+          var app7 = typeLines([[[D, "    res."], [B, "append"], [D, "(i)"]]], rowTop(3, 1), APP7_AT);
+
+          // "Did we write one if condition or not? Yes." - it is written between the for and the
+          // append, so the append slides down and one indent further in.
+          resizeWin(Q4, Q5, IF7_AT - 0.8, PUSH_DUR);
+          tl.fromTo(app7[0].el, { x: 0, y: 0 }, { x: 4 * CW, y: LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, IF7_AT - 0.8);
+          var if7 = typeLines([[[K, "    if"], [D, "(i%2=="], [N, "0"], [D, "):"]]], rowTop(3, 1), IF7_AT);
+
+          var PRINT7_AT = 96.6;
+          resizeWin(Q5, Q6, PRINT7_AT - 0.7, PUSH_DUR);
+          var print7 = typeLines([[[B, "print"], [D, "(res)"]]], rowTop(5, 2), PRINT7_AT);
+
+          // ---- Part 8: the same thing as a list comprehension, with the condition on the end ----
+          // "First of all list comprehension means what should we do? Square bracket." The
+          // brackets of `res = []` are already there, so the loop, the value and the condition
+          // are written into them in that order.
+          var FADE8_AT = 102.0, CLOSE8_AT = 102.8;
+          var LOOP8_AT = 104.0, VAL8_AT = 106.2, IF8_AT = 107.6;
+          var Q7 = pose(21, 3, 2, 49, 105), Q8 = pose(33, 3, 2, 49, 105);
+
+          [for7[0].el, if7[0].el, app7[0].el].forEach(function (el) {
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, FADE8_AT);
+          });
+          resizeWin(Q6, Q7, CLOSE8_AT, PUSH_DUR);
+          tl.fromTo(print7[0].el, { y: 0 }, { y: -3 * LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, CLOSE8_AT);
+
+          // "after this obviously we need to write the for loop ... inside this"
+          var close8 = res7[0].chars[7];
+          tl.set(close8, { display: "inline-block" }, LOOP8_AT);
+          var loop8 = addLine([[D, "       "], [K, "for "], [D, "i "], [K, "in "], [D, "lst"]], rowTop(1, 1));
+          var loop8c = loop8.chars.slice(7);
+          loop8c.forEach(function (sp, k) {
+            reveal(sp, LOOP8_AT + k * CHAR);
+            tl.set(close8, { x: (k + 1) * CW }, LOOP8_AT + k * CHAR);
+          });
+
+          // "What value do we want? I value. So I will write that particular I value."
+          var val8 = addLine([[D, "       i "]], rowTop(1, 1));
+          var val8c = val8.chars.slice(7);
+          val8c.forEach(function (sp, k) {
+            reveal(sp, VAL8_AT + k * CHAR);
+            tl.set(loop8.el, { x: (k + 1) * CW }, VAL8_AT + k * CHAR);
+            tl.set(close8, { x: (loop8c.length + k + 1) * CW }, VAL8_AT + k * CHAR);
+          });
+
+          // "But do we want all the elements or only few elements? ... Same if condition should
+          // be written over here" - after the for loop, on the end. The window grows for it.
+          // the line is longer than the room beside the lists, so the window scales to fit
+          tl.set("#cw-stage", { transformOrigin: P1.x + "px " + P1.y + "px" }, IF8_AT - 1.0);
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.8, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, IF8_AT - 0.7);
+          resizeWin(Q7, Q8, IF8_AT - 0.7, PUSH_DUR);
+          var if8 = addLine([[D, "                      "], [K, "if"], [D, "(i%2=="], [N, "0"], [D, ")"]], rowTop(1, 1));
+          var if8c = if8.chars.slice(22);
+          if8c.forEach(function (sp, k) {
+            reveal(sp, IF8_AT + k * CHAR);
+            tl.set(close8, { x: (loop8c.length + val8c.length + k + 2) * CW }, IF8_AT + k * CHAR);
+          });
+
+          // ---- Part 9: the same comprehension, asking for the odd values instead ----
+          // Only the operator changes: i%2==0 becomes i%2!=0, so the one character is swapped
+          // in place and the row on the right is filled again.
+          var ODD_AT = 118.0, EVEN_AT = 147.0, OR_AT = 148.5;
+          var eqCh = if8.chars[28], parenCh = if8.chars[31];
+          var notLine = addLine([[D, "                            !"]], rowTop(1, 1));
+          var notCh = notLine.chars[28];
+          tl.set(notCh, { autoAlpha: 0 }, 0);   // it only exists for the swap
+          function swap(outCh, inCh, at) {
+            tl.fromTo(outCh, { autoAlpha: 1, scale: 1, transformOrigin: "50% 60%" },
+                             { autoAlpha: 0, scale: 0.4, duration: 0.22, ease: "power2.in", immediateRender: false }, at);
+            tl.fromTo(inCh, { autoAlpha: 0, scale: 0.4, transformOrigin: "50% 60%" },
+                            { autoAlpha: 1, scale: 1, duration: 0.35, ease: "back.out(2.6)", immediateRender: false }, at + 0.2);
+          }
+          tl.set(eqCh, { display: "inline-block" }, ODD_AT);
+          tl.set(notCh, { display: "inline-block" }, ODD_AT);
+          swap(eqCh, notCh, ODD_AT);
+
+          // ---- Part 10: the teacher's own list, back to even, and an "or" on the end ----
+          // "Include any numbers they provided" - line 1 is rewritten with all eight values,
+          // and the list on the right is rebuilt to match.
+          tl.fromTo(lstLine[0].el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, 135.5);
+          var lst8 = typeLines([
+            [[D, "lst = ["], [N, "5"], [D, ", "], [N, "3"], [D, ", "], [N, "1"], [D, ", "], [N, "2"], [D, ", "],
+             [N, "4"], [D, ", "], [N, "6"], [D, ", "], [N, "8"], [D, ", "], [N, "9"], [D, "]"]],
+          ], 0, 136.3);
+
+          swap(notCh, eqCh, EVEN_AT);
+
+          // " ... or i%3==0" is written inside the bracket, so the ) and the ] are pushed right
+          tl.set(parenCh, { display: "inline-block" }, OR_AT);
+          var orLine = addLine([[D, "                                or "], [D, "i%3=="], [N, "0"]], rowTop(1, 1));
+          var orCh = orLine.chars.slice(31);
+          orCh.forEach(function (sp, k) {
+            reveal(sp, OR_AT + k * CHAR);
+            tl.set(parenCh, { x: (k + 1) * CW }, OR_AT + k * CHAR);
+            tl.set(close8, { x: (25 + k + 1) * CW }, OR_AT + k * CHAR);
+          });
+          var Q9 = pose(43, 3, 2, 49, 105);
+          tl.fromTo("#cw-stage", { scale: 0.8 }, { scale: 0.92, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, OR_AT - 0.7);
+          resizeWin(Q8, Q9, OR_AT - 0.7, PUSH_DUR);
+
+
+
+          // ---- The lesson clears away so the practice question has the frame ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 62.0);
+
+          // ---- Part 12: the value, or a zero in its place ----
+          // The window is cleared back to its one-line pose while the lists are being rebuilt,
+          // and comes back with the original five-value list on line 1.
+          var RESET12 = 180.0, BACK12 = 196.5;
+          // the window leaves first, so the lists have the frame to themselves while they rebuild
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 179.0);
+          [lst8[0].el, res7[0].el, for7[0].el, if7[0].el, app7[0].el, print7[0].el,
+           loop8.el, val8.el, if8.el, notLine.el, orLine.el].forEach(function (el) {
+            tl.set(el, { autoAlpha: 0 }, RESET12);
+          });
+          tl.set(lstLine[0].el, { autoAlpha: 1 }, RESET12);
+          tl.set("#cw-stage", { scale: 1 }, RESET12);
+          setWin(P1, RESET12);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK12);
+
+          var R2 = pose(21, 2, 1, 49, 105), R3 = pose(21, 3, 1, 49, 105);
+          var R4 = pose(34, 4, 1, 49, 105), R5 = pose(34, 5, 2, 49, 105);
+          var RES12 = 198.0, FOR12 = 200.3, APP12 = 202.9, PRINT12 = 207.2;
+
+          resizeWin(P1, R2, RES12 - 0.7, PUSH_DUR);
+          var res12 = typeLines([[[D, "res = []"]]], rowTop(1, 1), RES12);
+          resizeWin(R2, R3, FOR12 - 0.7, PUSH_DUR);
+          var for12 = typeLines([[[K, "for "], [D, "i "], [K, "in "], [D, "lst:"]]], rowTop(2, 1), FOR12);
+
+          // "res.append(i if i%2==0 else 0)" - the window gives ground for the longer line
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.78, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, APP12 - 0.7);
+          resizeWin(R3, R4, APP12 - 0.7, PUSH_DUR);
+          var app12 = typeLines([
+            [[D, "    res."], [B, "append"], [D, "(i "], [K, "if "], [D, "i%2=="], [N, "0"], [K, " else "], [N, "0"], [D, ")"]],
+          ], rowTop(3, 1), APP12);
+
+          resizeWin(R4, R5, PRINT12 - 0.7, PUSH_DUR);
+          var print12 = typeLines([[[B, "print"], [D, "(res)"]]], rowTop(4, 2), PRINT12);
+
+          // ---- Part 13: the same thing as a list comprehension ----
+          var FADE13 = 213.5, CLOSE13 = 214.3, LOOP13 = 215.8, VAL13 = 218.2;
+          var R6 = pose(34, 3, 2, 49, 105), R7 = pose(39, 3, 2, 49, 105);
+          [for12[0].el, app12[0].el].forEach(function (el) {
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, FADE13);
+          });
+          resizeWin(R5, R6, CLOSE13, PUSH_DUR);
+          tl.fromTo(print12[0].el, { y: 0 }, { y: -2 * LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, CLOSE13);
+
+          // the square bracket is already there, so the loop goes inside it first
+          var close12 = res12[0].chars[7];
+          tl.set(close12, { display: "inline-block" }, LOOP13);
+          var loop12 = addLine([[D, "       "], [K, "for "], [D, "i "], [K, "in "], [D, "lst"]], rowTop(1, 1));
+          var loop12c = loop12.chars.slice(7);
+          loop12c.forEach(function (sp, k) {
+            reveal(sp, LOOP13 + k * CHAR);
+            tl.set(close12, { x: (k + 1) * CW }, LOOP13 + k * CHAR);
+          });
+
+          // and the whole if-else goes in front of it, where the plain value used to go
+          tl.fromTo("#cw-stage", { scale: 0.78 }, { scale: 0.68, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, VAL13 - 0.7);
+          resizeWin(R6, R7, VAL13 - 0.7, PUSH_DUR);
+          var val12 = addLine([
+            [D, "       i "], [K, "if "], [D, "i%2=="], [N, "0"], [K, " else "], [N, "0"], [D, " "],
+          ], rowTop(1, 1));
+          var val12c = val12.chars.slice(7);
+          val12c.forEach(function (sp, k) {
+            reveal(sp, VAL13 + k * CHAR);
+            tl.set(loop12.el, { x: (k + 1) * CW }, VAL13 + k * CHAR);
+            tl.set(close12, { x: (loop12c.length + k + 1) * CW }, VAL13 + k * CHAR);
+          });
+
+          // ---- Part 15: each value kept together with its cube, as a pair ----
+          // The window is cleared while the pair row is still on its own, then comes back and
+          // the comprehension is built in the usual three moves.
+          var RESET15 = 254.2, BACK15 = 255.6;
+          [res12[0].el, for12[0].el, app12[0].el, print12[0].el, loop12.el, val12.el]
+            .forEach(function (el) { tl.set(el, { autoAlpha: 0 }, RESET15); });
+          tl.set("#cw-stage", { scale: 1 }, RESET15);
+          setWin(P1, RESET15);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK15);
+
+          var S2 = pose(21, 2, 1, 49, 105), S3 = pose(21, 3, 2, 49, 105), S4 = pose(31, 3, 2, 49, 105);
+          var RES15 = 257.0, PRINT15 = 259.4, LOOP15 = 261.8, PAIR15 = 264.0;
+
+          resizeWin(P1, S2, RES15 - 0.7, PUSH_DUR);
+          var res15 = typeLines([[[D, "res = []"]]], rowTop(1, 1), RES15);
+          resizeWin(S2, S3, PRINT15 - 0.7, PUSH_DUR);
+          var print15 = typeLines([[[B, "print"], [D, "(res)"]]], rowTop(2, 2), PRINT15);
+
+          // the loop goes inside the bracket that is already there
+          var close15 = res15[0].chars[7];
+          tl.set(close15, { display: "inline-block" }, LOOP15);
+          var loop15 = addLine([[D, "       "], [K, "for "], [D, "i "], [K, "in "], [D, "lst "]], rowTop(1, 1));
+          var loop15c = loop15.chars.slice(7);
+          loop15c.forEach(function (sp, k) {
+            reveal(sp, LOOP15 + k * CHAR);
+            tl.set(close15, { x: (k + 1) * CW }, LOOP15 + k * CHAR);
+          });
+
+          // "the element should be there as it is, along with that 125 also should come" - the
+          // two of them go in front of the loop as one pair
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.71, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, PAIR15 - 0.7);
+          resizeWin(S3, S4, PAIR15 - 0.7, PUSH_DUR);
+          var pair15 = addLine([[D, "       (i, i"], [D, "**"], [N, "3"], [D, ") "]], rowTop(1, 1));
+          var pair15c = pair15.chars.slice(7);
+          pair15c.forEach(function (sp, k) {
+            reveal(sp, PAIR15 + k * CHAR);
+            tl.set(loop15.el, { x: (k + 1) * CW }, PAIR15 + k * CHAR);
+            tl.set(close15, { x: (loop15c.length + k + 1) * CW }, PAIR15 + k * CHAR);
+          });
+
+          // ---- only the lists are left while the expected pairs are shown ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 239.0);
+
+          // ---- everything clears for the next practice question ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 275.0);
+
+          // ---- Part 16: counting the vowels in a string, the normal way first ----
+          // "First write the normal code, it'll become easy. If you directly write list
+          // comprehension, it'll become difficult."
+          var RESET16 = 289.5, BACK16 = 299.4;
+          [lstLine[0].el, res15[0].el, print15[0].el, loop15.el, pair15.el]
+            .forEach(function (el) { tl.set(el, { autoAlpha: 0 }, RESET16); });
+          tl.set("#cw-stage", { scale: 1 }, RESET16);
+          setWin(P1, RESET16);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK16);
+
+          var T2 = pose(21, 2, 0, 49, 105), T3 = pose(21, 3, 1, 49, 105), T4 = pose(21, 4, 1, 49, 105);
+          var T5 = pose(21, 5, 1, 49, 105), T6 = pose(21, 6, 1, 49, 105), T7 = pose(21, 7, 2, 49, 105);
+          var S16 = 300.6, VOW16 = 303.0, RES16 = 305.6, FOR16 = 308.0, IF16 = 310.4, APP16 = 313.0, PR16 = 316.0;
+
+          var sLine = typeLines([[[D, "s = "], [S, "'Hello World'"]]], 0, S16);
+          resizeWin(P1, T2, VOW16 - 0.7, PUSH_DUR);
+          var vow16 = typeLines([[[D, "vowels = "], [S, "'aeiouAEIOU'"]]], rowTop(1, 0), VOW16);
+
+          // "we will create one new string here ... all I will do is I will just say i in vowels"
+          resizeWin(T2, T3, RES16 - 0.7, PUSH_DUR);
+          var res16 = typeLines([[[D, "res = []"]]], rowTop(2, 1), RES16);
+          resizeWin(T3, T4, FOR16 - 0.7, PUSH_DUR);
+          var for16 = typeLines([[[K, "for "], [D, "i "], [K, "in "], [D, "s:"]]], rowTop(3, 1), FOR16);
+          resizeWin(T4, T5, IF16 - 0.7, PUSH_DUR);
+          var if16 = typeLines([[[K, "    if"], [D, "(i "], [K, "in "], [D, "vowels):"]]], rowTop(4, 1), IF16);
+          resizeWin(T5, T6, APP16 - 0.7, PUSH_DUR);
+          var app16 = typeLines([[[D, "        res."], [B, "append"], [D, "(i)"]]], rowTop(5, 1), APP16);
+          resizeWin(T6, T7, PR16 - 0.7, PUSH_DUR);
+          var print16 = typeLines([[[B, "print"], [D, "(res)"]]], rowTop(6, 2), PR16);
+
+          // ---- Part 17: the same counter as a list comprehension ----
+          // The teacher's order this time: the for loop goes in first, then the condition after
+          // it, and the value being collected goes in last.
+          var FADE17 = 335.0, CLOSE17 = 335.8, LOOP17 = 337.6, IF17 = 339.8, VAL17 = 342.6, LEN17 = 347.4;
+          var U1 = pose(21, 4, 2, 49, 105), U2 = pose(34, 4, 2, 49, 105), U3 = pose(36, 4, 2, 49, 105);
+
+          [for16[0].el, if16[0].el, app16[0].el].forEach(function (el) {
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, FADE17);
+          });
+          resizeWin(T7, U1, CLOSE17, PUSH_DUR);
+          tl.fromTo(print16[0].el, { y: 0 }, { y: -3 * LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, CLOSE17);
+
+          // "you will just copy this for loop first, for i in s"
+          var close17 = res16[0].chars[7];
+          tl.set(close17, { display: "inline-block" }, LOOP17);
+          var loop17 = addLine([[D, "       "], [K, "for "], [D, "i "], [K, "in "], [D, "s "]], rowTop(2, 1));
+          var loop17c = loop17.chars.slice(7);
+          loop17c.forEach(function (sp, k) {
+            reveal(sp, LOOP17 + k * CHAR);
+            tl.set(close17, { x: (k + 1) * CW }, LOOP17 + k * CHAR);
+          });
+
+          // "do we have if else or just if? So I'll say i in vowels"
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.66, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, IF17 - 0.7);
+          resizeWin(U1, U2, IF17 - 0.7, PUSH_DUR);
+          var if17 = addLine([[D, "                  "], [K, "if "], [D, "i "], [K, "in "], [D, "vowels "]], rowTop(2, 1));
+          var if17c = if17.chars.slice(18);
+          if17c.forEach(function (sp, k) {
+            reveal(sp, IF17 + k * CHAR);
+            tl.set(close17, { x: (loop17c.length + k + 1) * CW }, IF17 + k * CHAR);
+          });
+
+          // "every time the condition is true ... we are appending i. So I'll put an i over here"
+          resizeWin(U2, U3, VAL17 - 0.7, PUSH_DUR);
+          var val17 = addLine([[D, "       i "]], rowTop(2, 1));
+          var val17c = val17.chars.slice(7);
+          val17c.forEach(function (sp, k) {
+            reveal(sp, VAL17 + k * CHAR);
+            tl.set(loop17.el, { x: (k + 1) * CW }, VAL17 + k * CHAR);
+            tl.set(if17.el, { x: (k + 1) * CW }, VAL17 + k * CHAR);
+            tl.set(close17, { x: (loop17c.length + if17c.length + k + 1) * CW }, VAL17 + k * CHAR);
+          });
+
+          // "rather than this, what we need is the length of this" - print(res) becomes print(len(res))
+          var tail17 = print16[0].chars.slice(6);
+          tail17.forEach(function (sp) { tl.set(sp, { display: "inline-block" }, LEN17); });
+          var lenOv = addLine([[D, "      "], [B, "len"], [D, "("]], rowTop(3, 2));
+          var lenC = lenOv.chars.slice(6);
+          lenC.forEach(function (sp, k) {
+            reveal(sp, LEN17 + k * CHAR);
+            tail17.forEach(function (t) { tl.set(t, { x: (k + 1) * CW }, LEN17 + k * CHAR); });
+          });
+          var endOv = addLine([[D, "              )"]], rowTop(3, 2));
+          reveal(endOv.chars[14], LEN17 + lenC.length * CHAR + 0.1);
+
+          // ---- Part 18: the whole thing collapses to one line of logic ----
+          // "Can we directly replace this with this? ... so this line is not required." The
+          // comprehension moves inside len(), and the line that held it is gone.
+          var B1 = 359.5, B1SET = 360.4, B1TYPE = 361.6;
+          var B2 = 365.6, B2SET = 366.4, B2TYPE = 367.6;
+          var V1 = pose(41, 3, 1, 49, 105), V2 = pose(47, 2, 1, 49, 105);
+          var pr9 = print16[0].chars[9], en9 = endOv.chars[14];
+
+          // the print statement and its overlays travel together as the lines above close up
+          function lift(pFrom, pTo, gFrom, gTo, at, els) {
+            tl.fromTo(print16[0].el, { y: pFrom }, { y: pTo, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, at);
+            els.forEach(function (el) {
+              tl.fromTo(el, { y: gFrom }, { y: gTo, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, at);
+            });
+          }
+
+          // beat 1: res is replaced by what it was holding
+          [res16[0].el, loop17.el, if17.el, val17.el].forEach(function (el) {
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, B1);
+          });
+          print16[0].chars.slice(6, 9).forEach(function (sp) {
+            tl.fromTo(sp, { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.35, ease: "power1.in", immediateRender: false }, B1);
+          });
+          tl.fromTo("#cw-stage", { scale: 0.66 }, { scale: 0.79, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, B1SET);
+          resizeWin(U3, V1, B1SET, PUSH_DUR);
+          lift(-198, -297, 0, -99, B1SET, [lenOv.el, endOv.el]);
+          [pr9, en9].forEach(function (sp) { tl.set(sp, { display: "inline-block" }, B1SET); });
+          tl.set(pr9, { x: 1 * CW }, B1SET);
+          tl.set(en9, { x: -3 * CW }, B1SET);
+
+          var compOv = addLine([
+            [D, "          ["], [D, "i "], [K, "for "], [D, "i "], [K, "in "], [D, "s "],
+            [K, "if "], [D, "i "], [K, "in "], [D, "vowels"], [D, "]"],
+          ], rowTop(3, 2));
+          tl.set(compOv.el, { y: -99 }, B1SET);
+          var compC = compOv.chars.slice(10);
+          compC.forEach(function (sp, k) {
+            reveal(sp, B1TYPE + k * CHAR);
+            tl.set(pr9, { x: (k + 2) * CW }, B1TYPE + k * CHAR);
+            tl.set(en9, { x: (k - 2) * CW }, B1TYPE + k * CHAR);
+          });
+
+          // beat 2: "can we not directly write aeiou over here? just copy it and replace it"
+          var vowC = compOv.chars.slice(32, 38), brC = compOv.chars[38];
+          vowC.forEach(function (sp) {
+            tl.fromTo(sp, { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.35, ease: "power1.in", immediateRender: false }, B2);
+          });
+          tl.fromTo(vow16[0].el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, B2);
+          resizeWin(V1, V2, B2SET, PUSH_DUR);
+          lift(-297, -363, -99, -165, B2SET, [lenOv.el, endOv.el, compOv.el]);
+          tl.set(brC, { display: "inline-block" }, B2SET);
+          tl.set(brC, { x: -6 * CW }, B2SET);
+          tl.set(pr9, { x: 24 * CW }, B2SET);
+          tl.set(en9, { x: 20 * CW }, B2SET);
+
+          var vowOv = addLine([[D, "                                "], [S, "'aeiouAEIOU'"]], rowTop(3, 2));
+          tl.set(vowOv.el, { y: -165 }, B2SET);
+          vowOv.chars.slice(32).forEach(function (sp, k) {
+            reveal(sp, B2TYPE + k * CHAR);
+            tl.set(brC, { x: (k - 5) * CW }, B2TYPE + k * CHAR);
+            tl.set(pr9, { x: (25 + k) * CW }, B2TYPE + k * CHAR);
+            tl.set(en9, { x: (21 + k) * CW }, B2TYPE + k * CHAR);
+          });
+
+          // ---- only the lists are left while the exercise is read ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 379.0);
+
+          // ---- Part 20: squaring the evens and doubling the odds, the normal way ----
+          // "This is not list comprehension. This is the normal way of writing the code."
+          var RESET20 = 401.0, BACK20 = 402.2;
+          [sLine[0].el, vow16[0].el, print16[0].el, lenOv.el, endOv.el, compOv.el, vowOv.el,
+           res16[0].el, loop17.el, if17.el, val17.el].forEach(function (el) { tl.set(el, { autoAlpha: 0 }, RESET20); });
+          tl.set("#cw-stage", { scale: 1 }, RESET20);
+          setWin(P1, RESET20);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK20);
+
+          var W2 = pose(21, 2, 1, 49, 105), W3 = pose(21, 3, 1, 49, 105), W4 = pose(21, 4, 1, 49, 105);
+          var W5 = pose(23, 5, 1, 49, 105), W6 = pose(23, 6, 1, 49, 105), W7 = pose(23, 7, 1, 49, 105);
+          var W8 = pose(23, 8, 2, 49, 105);
+          var LST20 = 403.4, RES20 = 405.8, FOR20 = 408.2, IF20 = 410.6;
+          var AP20 = 413.2, EL20 = 416.4, AP2_20 = 418.6, PR20 = 421.8;
+
+          var lst20 = typeLines([
+            [[D, "lst = ["], [N, "1"], [D, ", "], [N, "4"], [D, ", "], [N, "2"], [D, ", "], [N, "3"], [D, ", "], [N, "5"], [D, "]"]],
+          ], 0, LST20);
+
+          resizeWin(P1, W2, RES20 - 0.7, PUSH_DUR);
+          var res20 = typeLines([[[D, "res = []"]]], rowTop(1, 1), RES20);
+          resizeWin(W2, W3, FOR20 - 0.7, PUSH_DUR);
+          var for20 = typeLines([[[K, "for "], [D, "i "], [K, "in "], [D, "lst:"]]], rowTop(2, 1), FOR20);
+          resizeWin(W3, W4, IF20 - 0.7, PUSH_DUR);
+          var if20 = typeLines([[[K, "    if"], [D, "(i%2=="], [N, "0"], [D, "):"]]], rowTop(3, 1), IF20);
+
+          // "if the number is even you are squaring it; if it is odd you are doubling it"
+          resizeWin(W4, W5, AP20 - 0.7, PUSH_DUR);
+          var ap20 = typeLines([[[D, "        res."], [B, "append"], [D, "(i*i)"]]], rowTop(4, 1), AP20);
+          resizeWin(W5, W6, EL20 - 0.7, PUSH_DUR);
+          var el20 = typeLines([[[K, "    else"], [D, ":"]]], rowTop(5, 1), EL20);
+          resizeWin(W6, W7, AP2_20 - 0.7, PUSH_DUR);
+          var ap2_20 = typeLines([[[D, "        res."], [B, "append"], [D, "(i+i)"]]], rowTop(6, 1), AP2_20);
+
+          resizeWin(W7, W8, PR20 - 0.7, PUSH_DUR);
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.85, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, PR20 - 0.7);
+          var pr20 = typeLines([[[B, "print"], [D, "(res)"]]], rowTop(7, 2), PR20);
+
+          // ---- Part 21: the same thing as a list comprehension, with a ternary inside ----
+          // "Put a square bracket, copy the for loop ... and if you have if else, that is a
+          // ternary, and it goes before the for."
+          var FADE21 = 428.5, CLOSE21 = 429.3, LOOP21 = 431.1, TERN21 = 433.5;
+          var X1 = pose(23, 3, 2, 49, 105), X2 = pose(44, 3, 2, 49, 105);
+
+          [for20[0].el, if20[0].el, ap20[0].el, el20[0].el, ap2_20[0].el].forEach(function (el) {
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, FADE21);
+          });
+          resizeWin(W8, X1, CLOSE21, PUSH_DUR);
+          tl.fromTo(pr20[0].el, { y: 0 }, { y: -5 * LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, CLOSE21);
+
+          var close21 = res20[0].chars[7];
+          tl.set(close21, { display: "inline-block" }, LOOP21);
+          var loop21 = addLine([[D, "       "], [K, "for "], [D, "i "], [K, "in "], [D, "lst "]], rowTop(1, 1));
+          var loop21c = loop21.chars.slice(7);
+          loop21c.forEach(function (sp, k) {
+            reveal(sp, LOOP21 + k * CHAR);
+            tl.set(close21, { x: (k + 1) * CW }, LOOP21 + k * CHAR);
+          });
+
+          // the whole if-else becomes one ternary in front of the loop
+          tl.fromTo("#cw-stage", { scale: 0.85 }, { scale: 0.60, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, TERN21 - 0.7);
+          resizeWin(X1, X2, TERN21 - 0.7, PUSH_DUR);
+          var tern21 = addLine([
+            [D, "       i*i "], [K, "if "], [D, "i%2=="], [N, "0"], [K, " else "], [D, "i+i "],
+          ], rowTop(1, 1));
+          var tern21c = tern21.chars.slice(7);
+          tern21c.forEach(function (sp, k) {
+            reveal(sp, TERN21 + k * CHAR);
+            tl.set(loop21.el, { x: (k + 1) * CW }, TERN21 + k * CHAR);
+            tl.set(close21, { x: (loop21c.length + k + 1) * CW }, TERN21 + k * CHAR);
+          });
+
+          // ---- everything clears while the closing exercise is read ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 445.0);
+
+          // ---- Part 23: two lists, and every pair they make ----
+          var RESET23 = 481.5, BACK23 = 482.4;
+          [lst20[0].el, res20[0].el, for20[0].el, if20[0].el, ap20[0].el, el20[0].el,
+           ap2_20[0].el, pr20[0].el, loop21.el, tern21.el]
+            .forEach(function (el) { tl.set(el, { autoAlpha: 0 }, RESET23); });
+          tl.set("#cw-stage", { scale: 1 }, RESET23);
+          setWin(P1, RESET23);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK23);
+
+          var Y2 = pose(21, 2, 0, 49, 105), Y3 = pose(21, 3, 1, 49, 105), Y4 = pose(21, 4, 1, 49, 105);
+          var Y5 = pose(21, 5, 1, 49, 105), Y6 = pose(25, 6, 1, 49, 105), Y7 = pose(25, 7, 2, 49, 105);
+          var Y8 = pose(29, 8, 2, 49, 105);
+          var L1_23 = 483.6, L2_23 = 486.0, RES23 = 488.4, FOR1 = 490.6, FOR2 = 492.8;
+          // the same clock the rings on the tiles and the trace card run on
+          var OUTER_STEPS = [], INNER_STEPS = [];
+          var T0_HL = 502.0, ST_HL = 1.1, LEAD_HL = 0.6, PER_HL = 4 * ST_HL + LEAD_HL;
+          for (var a = 0; a < 3; a++) {
+            OUTER_STEPS.push([T0_HL + a * PER_HL, T0_HL + (a + 1) * PER_HL - 0.15]);
+            for (var b = 0; b < 4; b++) {
+              var t0h = T0_HL + a * PER_HL + LEAD_HL + b * ST_HL;
+              INNER_STEPS.push([t0h + 0.2, t0h + ST_HL - 0.15]);
+            }
+          }
+          var AP23 = 495.2, PR23 = 498.4, IF23 = 526.4;
+
+          var lst1_23 = typeLines([[[D, "lst1 = ["], [N, "2"], [D, ", "], [N, "4"], [D, ", "], [N, "5"], [D, "]"]]], 0, L1_23);
+          resizeWin(P1, Y2, L2_23 - 0.7, PUSH_DUR);
+          var lst2_23 = typeLines([
+            [[D, "lst2 = ["], [N, "5"], [D, ", "], [N, "4"], [D, ", "], [N, "2"], [D, ", "], [N, "1"], [D, "]"]],
+          ], rowTop(1, 0), L2_23);
+
+          resizeWin(Y2, Y3, RES23 - 0.7, PUSH_DUR);
+          var res23 = typeLines([[[D, "res = []"]]], rowTop(2, 1), RES23);
+          resizeWin(Y3, Y4, FOR1 - 0.7, PUSH_DUR);
+          var for1_23 = typeLines([[[K, "for "], [D, "i "], [K, "in "], [D, "lst1:"]]], rowTop(3, 1), FOR1);
+          resizeWin(Y4, Y5, FOR2 - 0.7, PUSH_DUR);
+          var for2_23 = typeLines([[[K, "    for "], [D, "j "], [K, "in "], [D, "lst2:"]]], rowTop(4, 1), FOR2);
+          resizeWin(Y5, Y6, AP23 - 0.7, PUSH_DUR);
+          var ap23 = typeLines([[[D, "        res."], [B, "append"], [D, "((i,j))"]]], rowTop(5, 1), AP23);
+          resizeWin(Y6, Y7, PR23 - 0.7, PUSH_DUR);
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.84, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, PR23 - 0.7);
+          // the window gives up more room so the printed output sits high, not in the corner
+          tl.fromTo("#cw-stage", { scale: 0.84 }, { scale: 0.76, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, 517.9);
+          var pr23 = typeLines([[[B, "print"], [D, "(res)"]]], rowTop(6, 2), PR23);
+
+          // ---- the running line is lit as each step of the trace is written ----
+          function hlBar(top) {
+            var d = document.createElement("div");
+            d.className = "cw-hl";
+            d.style.cssText = "top: " + (top - 4) + "px; width: " + (pose(25, 1, 0).pw - 56) + "px; height: " + (LINE_H - 4) + "px;";
+            code.insertBefore(d, code.firstChild);
+            return d;
+          }
+          var hlOuter = hlBar(rowTop(3, 1)), hlInner = hlBar(rowTop(5, 1));
+          function lit(el, at, outAt) {
+            tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.18, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.25, ease: "power1.inOut", immediateRender: false }, outAt);
+          }
+          OUTER_STEPS.forEach(function (t) { lit(hlOuter, t[0], t[1]); });
+          INNER_STEPS.forEach(function (t) { lit(hlInner, t[0], t[1]); });
+          // the append drops a line when the condition is written above it
+          tl.fromTo(hlInner, { y: 0 }, { y: LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, IF23 - 0.8);
+
+          // ---- the condition that drops the pairs where both values are the same ----
+          tl.fromTo("#cw-stage", { scale: 0.76 }, { scale: 0.72, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, IF23 - 0.8);
+          resizeWin(Y7, Y8, IF23 - 0.8, PUSH_DUR);
+          tl.fromTo(ap23[0].el, { x: 0, y: 0 }, { x: 4 * CW, y: LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, IF23 - 0.8);
+          tl.fromTo(pr23[0].el, { y: 0 }, { y: LINE_H, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, IF23 - 0.8);
+          var if23 = typeLines([[[K, "        if"], [D, "(i != j):"]]], rowTop(5, 1), IF23);
+
+          // ---- Part 24: the nested loop as one list comprehension ----
+          // "Square bracket first, then the outer for, then the inner for, and the pair we are
+          // collecting goes right at the front."
+          var FADE24 = 539.5, CLOSE24 = 540.3, LA24 = 542.0, LB24 = 544.3, PR24 = 546.6;
+          var Z1 = pose(21, 4, 2, 49, 105), Z2 = pose(22, 4, 2, 49, 105);
+          var Z3 = pose(36, 4, 2, 49, 105), Z4 = pose(42, 4, 2, 49, 105);
+
+          [for1_23[0].el, for2_23[0].el, if23[0].el, ap23[0].el].forEach(function (el) {
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, FADE24);
+          });
+          // the lists are gone, so the window comes back to full size for the long line
+          tl.fromTo("#cw-stage", { scale: 0.72 }, { scale: 1, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, CLOSE24);
+          resizeWin(Y8, Z1, CLOSE24, PUSH_DUR);
+          tl.fromTo(pr23[0].el, { y: LINE_H }, { y: -198, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, CLOSE24);
+
+          var close24 = res23[0].chars[7];
+          tl.set(close24, { display: "inline-block" }, LA24);
+
+          // the outer loop goes inside the bracket first
+          resizeWin(Z1, Z2, LA24 - 0.6, PUSH_DUR);
+          var loopA = addLine([[D, "       "], [K, "for "], [D, "i "], [K, "in "], [D, "lst1 "]], rowTop(2, 1));
+          var loopAc = loopA.chars.slice(7);
+          loopAc.forEach(function (sp, k) {
+            reveal(sp, LA24 + k * CHAR);
+            tl.set(close24, { x: (k + 1) * CW }, LA24 + k * CHAR);
+          });
+
+          // then the inner loop, straight after it
+          resizeWin(Z2, Z3, LB24 - 0.6, PUSH_DUR);
+          var loopB = addLine([[D, "                     "], [K, "for "], [D, "j "], [K, "in "], [D, "lst2 "]], rowTop(2, 1));
+          var loopBc = loopB.chars.slice(21);
+          loopBc.forEach(function (sp, k) {
+            reveal(sp, LB24 + k * CHAR);
+            tl.set(close24, { x: (loopAc.length + k + 1) * CW }, LB24 + k * CHAR);
+          });
+
+          // and the pair being collected goes right at the front
+          resizeWin(Z3, Z4, PR24 - 0.6, PUSH_DUR);
+          var pairOv = addLine([[D, "       (i,j) "]], rowTop(2, 1));
+          var pairOvc = pairOv.chars.slice(7);
+          pairOvc.forEach(function (sp, k) {
+            reveal(sp, PR24 + k * CHAR);
+            tl.set(loopA.el, { x: (k + 1) * CW }, PR24 + k * CHAR);
+            tl.set(loopB.el, { x: (k + 1) * CW }, PR24 + k * CHAR);
+            tl.set(close24, { x: (loopAc.length + loopBc.length + k + 1) * CW }, PR24 + k * CHAR);
+          });
+
+          // ---- Part 25: the condition goes on the end of the comprehension ----
+          var IF24 = 557.6, Z5 = pose(50, 4, 2, 49, 105);
+          resizeWin(Z4, Z5, IF24 - 0.6, PUSH_DUR);
+          var cond24 = addLine([
+            [D, "                                         "], [K, "if "], [D, "i!=j "],
+          ], rowTop(2, 1));
+          cond24.chars.slice(41).forEach(function (sp, k) {
+            reveal(sp, IF24 + k * CHAR);
+            tl.set(close24, { x: (loopAc.length + loopBc.length + pairOvc.length + k + 1) * CW }, IF24 + k * CHAR);
+          });
+
+          // ---- Part 27: the same pairing, done by zip ----
+          // "zip walks both lists together and hands back one pair per position."
+          var RESET27 = 595.4, BACK27 = 596.2;
+          [lst1_23[0].el, lst2_23[0].el, res23[0].el, pr23[0].el, loopA.el, loopB.el, pairOv.el, cond24.el]
+            .forEach(function (el) { tl.set(el, { autoAlpha: 0 }, RESET27); });
+          tl.set("#cw-stage", { scale: 1 }, RESET27);
+          setWin(P1, RESET27);
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK27);
+
+          var K2 = pose(21, 2, 0, 49, 105), K3 = pose(21, 3, 1, 49, 105);
+          var K4 = pose(21, 4, 2, 49, 105), K5 = pose(26, 4, 2, 49, 105);
+          var L1_27 = 597.6, L2_27 = 600.0, ZIP27 = 602.6, PRN27 = 605.4, WRAP27 = 611.2;
+
+          typeLines([[[D, "lst1 = ["], [N, "2"], [D, ", "], [N, "4"], [D, ", "], [N, "5"], [D, "]"]]], 0, L1_27);
+          resizeWin(P1, K2, L2_27 - 0.7, PUSH_DUR);
+          typeLines([[[D, "lst2 = ["], [N, "1"], [D, ", "], [N, "3"], [D, ", "], [N, "9"], [D, "]"]]], rowTop(1, 0), L2_27);
+
+          resizeWin(K2, K3, ZIP27 - 0.7, PUSH_DUR);
+          var zipLine = typeLines([[[D, "res = "], [B, "zip"], [D, "(lst1,lst2)"]]], rowTop(2, 1), ZIP27);
+          resizeWin(K3, K4, PRN27 - 0.7, PUSH_DUR);
+          typeLines([[[B, "print"], [D, "(res)"]]], rowTop(3, 2), PRN27);
+
+          // "that is a zip object - wrap it in list() to see what is inside"
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.92, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, WRAP27 - 0.7);
+          resizeWin(K4, K5, WRAP27 - 0.7, PUSH_DUR);
+          var zipTail = zipLine[0].chars.slice(6);
+          zipTail.forEach(function (sp) { tl.set(sp, { display: "inline-block" }, WRAP27); });
+          var listOv = addLine([[D, "      "], [B, "list"], [D, "("]], rowTop(2, 1));
+          var listC = listOv.chars.slice(6);
+          listC.forEach(function (sp, k) {
+            reveal(sp, WRAP27 + k * CHAR);
+            zipTail.forEach(function (t) { tl.set(t, { x: (k + 1) * CW }, WRAP27 + k * CHAR); });
+          });
+          var endOv27 = addLine([[D, "                         )"]], rowTop(2, 1));
+          reveal(endOv27.chars[25], WRAP27 + listC.length * CHAR + 0.1);
+
+          // ---- Part 28: zip inside a list comprehension ----
+          // "for i,j in zip(lst1, lst2)" hands back one value from each list at a time.
+          var Z_FADE = 622.4, Z_RES = 623.6, Z_LOOP = 625.8, Z_IJ = 629.2, Z_PAIR = 631.0, Z_SUM = 644.0;
+          var N1 = pose(21, 3, 1, 49, 105), N2 = pose(21, 4, 2, 49, 105);
+          var N3 = pose(33, 4, 2, 49, 105), N4 = pose(35, 4, 2, 49, 105), N5 = pose(41, 4, 2, 49, 105);
+
+          [zipLine[0].el, listOv.el, endOv27.el].forEach(function (el) {
+            tl.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power1.inOut", immediateRender: false }, Z_FADE);
+          });
+          tl.fromTo("#cw-stage", { scale: 0.92 }, { scale: 1, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, Z_FADE);
+          resizeWin(K5, N2, Z_FADE, PUSH_DUR);
+          var resZ = typeLines([[[D, "res = []"]]], rowTop(2, 1), Z_RES);
+
+          // the loop goes inside the bracket, walking both lists at once
+          var closeZ = resZ[0].chars[7];
+          tl.set(closeZ, { display: "inline-block" }, Z_LOOP);
+          tl.fromTo("#cw-stage", { scale: 1 }, { scale: 0.66, duration: PUSH_DUR, ease: "power2.inOut", immediateRender: false }, Z_LOOP - 0.6);
+          resizeWin(N2, N3, Z_LOOP - 0.6, PUSH_DUR);
+          var zLoop = addLine([[D, "       "], [K, "for "], [D, "i "], [K, "in "], [B, "zip"], [D, "(lst1, lst2) "]], rowTop(2, 1));
+          var zLoopC = zLoop.chars.slice(7);
+          zLoopC.forEach(function (sp, k) {
+            reveal(sp, Z_LOOP + k * CHAR);
+            tl.set(closeZ, { x: (k + 1) * CW }, Z_LOOP + k * CHAR);
+          });
+
+          // "zip gives a pair, so unpack it into two names"
+          resizeWin(N3, N4, Z_IJ - 0.5, PUSH_DUR);
+          var zTail = zLoop.chars.slice(12);
+          zTail.forEach(function (sp) { tl.set(sp, { display: "inline-block" }, Z_IJ); });
+          var ijOv = addLine([[D, "            ,j"]], rowTop(2, 1));
+          var ijC = ijOv.chars.slice(12);
+          ijC.forEach(function (sp, k) {
+            reveal(sp, Z_IJ + k * CHAR);
+            zTail.forEach(function (t) { tl.set(t, { x: (k + 1) * CW }, Z_IJ + k * CHAR); });
+            tl.set(closeZ, { x: (zLoopC.length + k + 1) * CW }, Z_IJ + k * CHAR);
+          });
+
+          // the pair being collected goes at the front
+          resizeWin(N4, N5, Z_PAIR - 0.5, PUSH_DUR);
+          var zPair = addLine([[D, "       (i,j) "]], rowTop(2, 1));
+          var zPairC = zPair.chars.slice(7);
+          zPairC.forEach(function (sp, k) {
+            reveal(sp, Z_PAIR + k * CHAR);
+            tl.set(zLoop.el, { x: (k + 1) * CW }, Z_PAIR + k * CHAR);
+            tl.set(ijOv.el, { x: (k + 1) * CW }, Z_PAIR + k * CHAR);
+            tl.set(closeZ, { x: (zLoopC.length + ijC.length + k + 1) * CW }, Z_PAIR + k * CHAR);
+          });
+
+          // the comprehension is the line being run, so it is lit on every step
+          var hlZip = document.createElement("div");
+          hlZip.className = "cw-hl";
+          hlZip.style.cssText = "top: " + (rowTop(2, 1) - 4) + "px; width: " +
+            (pose(41, 1, 0).pw - 56) + "px; height: " + (LINE_H - 4) + "px;";
+          code.insertBefore(hlZip, code.firstChild);
+          [0, 1, 2].forEach(function (k) {
+            lit(hlZip, 634.2 + k * 1.3 + 0.2, 634.2 + (k + 1) * 1.3 - 0.15);
+            lit(hlZip, 646.6 + k * 1.1 + 0.2, 646.6 + (k + 1) * 1.1 - 0.15);
+          });
+
+          // ---- Part 29: collect the sum instead of the pair ----
+          var N6 = pose(39, 4, 2, 49, 105);
+          zPair.chars.forEach(function (sp) {
+            tl.fromTo(sp, { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.35, ease: "power1.in", immediateRender: false }, Z_SUM);
+          });
+          resizeWin(N5, N6, Z_SUM + 0.4, PUSH_DUR);
+          var zSum = addLine([[D, "       i+j "]], rowTop(2, 1));
+          var zSumC = zSum.chars.slice(7);
+          zSumC.forEach(function (sp, k) {
+            reveal(sp, Z_SUM + 0.9 + k * CHAR);
+            tl.set(zLoop.el, { x: (k + 1) * CW }, Z_SUM + 0.9 + k * CHAR);
+            tl.set(ijOv.el, { x: (k + 1) * CW }, Z_SUM + 0.9 + k * CHAR);
+            tl.set(closeZ, { x: (zLoopC.length + ijC.length + k + 1) * CW }, Z_SUM + 0.9 + k * CHAR);
+          });
+
+          // ---- the windows clear for the next exercise ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 568.0);
+
+          window.__timelines["code-window"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

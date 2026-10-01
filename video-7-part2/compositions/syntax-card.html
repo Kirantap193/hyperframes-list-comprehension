@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>syntax card</title>
+  </head>
+  <body>
+    <template id="syntax-card-template">
+      <style>
+        #root { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        /* The list-comprehension syntax, written on its own panel in the bottom right - under
+           the res list and beside the output window, so the frame is used end to end. It is
+           shown twice: first with the expression and the loop, and again at the end with the
+           if condition added to it. */
+        .sc-panel {
+          position: absolute; opacity: 0;
+          background: linear-gradient(145deg, #1a232c 0%, #0d131a 100%);
+          border: 1.5px solid #2a3642; border-radius: 40px;
+          box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.45),
+                      0 10px 0 #070b10, 0 40px 100px rgba(0, 0, 0, 0.7);
+        }
+        .sc-pill {
+          position: absolute; opacity: 0;
+          background: linear-gradient(160deg, #2166b8 0%, #16437a 100%);
+          border: 1px solid #3a7fd0; border-radius: 20px;
+          box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.28), inset 0 -2px 0 rgba(0, 0, 0, 0.35),
+                      0 5px 0 #0d2a4c, 0 12px 20px rgba(0, 0, 0, 0.5);
+          text-shadow: 0 2px 0 #0d2a4c, 0 4px 6px rgba(0, 0, 0, 0.45);
+          font-family: "SF Pro Display", "Inter", -apple-system, "Segoe UI", sans-serif; font-weight: 700;
+          color: #ffffff; font-size: 42px; line-height: 62px; text-align: center; white-space: pre;
+        }
+        .sc-t {
+          /* every run is hidden until it pops; the hidden state lives here, not in a set at 0 */
+          position: absolute; top: 118px; opacity: 0; visibility: hidden;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          white-space: pre; color: #ffffff;
+          font-size: 50px; line-height: 76px;
+          text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.30), 0 3px 0 #101922, 0 6px 0 #080e15,
+                       0 12px 20px rgba(0, 0, 0, 0.62);
+        }
+        .sc-kw { color: #ffae3d; }   /* for / if, as the reference card sets them */
+        .sc-in { color: #c099ff; }
+        .sc-num { color: #f5a97f; }
+        /* each named part: a tinted box, a brace under it, and its name */
+        .sc-box {
+          position: absolute; top: 126px; height: 60px; opacity: 0;
+          border: 3px solid; border-radius: 16px;
+          box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.22), inset 0 -3px 8px rgba(0, 0, 0, 0.35),
+                      0 6px 0 rgba(0, 0, 0, 0.45), 0 12px 22px rgba(0, 0, 0, 0.55);
+        }
+        .sc-brace { position: absolute; top: 200px; overflow: visible; opacity: 0; filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.6)); }
+        .sc-lb {
+          position: absolute; top: 230px; opacity: 0; text-align: center;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 600;
+          white-space: pre; font-size: 34px; line-height: 44px;
+          text-shadow: 0 2px 0 #0b1219, 0 4px 0 #070c11, 0 8px 14px rgba(0, 0, 0, 0.6);
+        }
+        .sc-expr { border-color: #f43f6e; background: linear-gradient(180deg, rgba(244, 63, 110, 0.26) 0%, rgba(244, 63, 110, 0.10) 100%); }
+        .sc-loop { border-color: #10b981; background: linear-gradient(180deg, rgba(16, 185, 129, 0.26) 0%, rgba(16, 185, 129, 0.10) 100%); }
+        .sc-cond { border-color: #ffae3d; background: linear-gradient(180deg, rgba(255, 174, 61, 0.26) 0%, rgba(255, 174, 61, 0.10) 100%); }
+        .sc-lb.sc-expr { color: #ff6b95; background: none; }
+        .sc-lb.sc-loop { color: #34d399; background: none; }
+        .sc-lb.sc-cond { color: #ffc46b; background: none; }
+        .sc-brace.sc-expr { color: #f43f6e; background: none; }
+        .sc-brace.sc-loop { color: #10b981; background: none; }
+        .sc-brace.sc-cond { color: #ffae3d; background: none; }
+      </style>
+
+      <div data-hf-id="hf-3al3" id="root" data-composition-id="syntax-card" data-width="1920" data-height="1080" data-duration="170">
+        <div data-hf-id="hf-vkgy" id="sc-stage" data-layout-allow-overflow="true" style="position: absolute; inset: 0; transform: scale(0.78); transform-origin: 49px 0px;"></div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var CHAR = 0.075;
+          var stage = document.getElementById("sc-stage");
+          var tl = gsap.timeline({ paused: true });
+
+          // The panel fills the corner under the res list, to the right of the output window.
+          // It is drawn at the width the finished syntax needs, so nothing has to move later.
+          var FS = 50, CW = FS * 0.6, PAD = 44;
+          // the panel hugs the syntax it is holding, so there is no dead space on the right;
+          // it is widened while it is off screen, before each longer version arrives
+          function fit(n) { return Math.round(n * CW) + 2 * PAD + 68; }
+          // Three cards down the frame, each hugging the syntax it holds.
+          var CARD_H = 302, LEFT = 49;
+          function card(n, top, cols) {
+            var el = document.createElement("div");
+            el.id = "sc-panel" + n;
+            el.className = "sc-panel";
+            el.style.cssText = "left: " + LEFT + "px; top: " + top + "px; width: " +
+              fit(cols) + "px; height: " + CARD_H + "px;";
+            var pill = document.createElement("div");
+            pill.id = "sc-pill" + n;
+            pill.className = "sc-pill";
+            pill.textContent = "Syntax " + n;
+            pill.style.cssText = "left: " + PAD + "px; top: 26px; width: 260px;";
+            el.appendChild(pill);
+            stage.appendChild(el);
+            return { el: el, pill: pill };
+          }
+
+          function spans(el, tokens) {
+            var chars = [];
+            tokens.forEach(function (tok) {
+              for (var i = 0; i < tok[1].length; i++) {
+                var s = document.createElement("span");
+                if (tok[0]) s.className = tok[0];
+                s.textContent = tok[1].charAt(i);
+                el.appendChild(s);
+                chars.push(s);
+              }
+            });
+            return chars;
+          }
+          function run(panel, id, col, tokens) {
+            var el = document.createElement("div");
+            el.id = id;
+            el.className = "sc-t";
+            el.style.left = (PAD + col * CW) + "px";
+            panel.appendChild(el);
+            return { el: el, chars: spans(el, tokens) };
+          }
+          // A horizontal curly brace, drawn on as if by hand.
+          function brace(panel, id, tone, col, cols) {
+            var w = Math.round(cols * CW + 20), r = 11, half = Math.round(w / 2) - 2 * r;
+            var d = "M 0 0 q 0 " + r + " " + r + " " + r + " h " + half + " q " + r + " 0 " + r + " " + r +
+              " q 0 -" + r + " " + r + " -" + r + " h " + half + " q " + r + " 0 " + r + " -" + r;
+            var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("class", "sc-brace " + tone);
+            svg.setAttribute("width", w);
+            svg.setAttribute("height", 26);
+            svg.setAttribute("data-layout-allow-overflow", "true");
+            svg.style.left = (PAD + col * CW - 10) + "px";
+            svg.innerHTML = '<path id="' + id + '" d="' + d + '" fill="none" stroke="currentColor" ' +
+              'stroke-width="3.5" stroke-linecap="round" />';
+            panel.appendChild(svg);
+            return { svg: svg, path: svg.firstChild };
+          }
+          function box(panel, id, tone, col, cols) {
+            var el = document.createElement("div");
+            el.id = id;
+            el.className = "sc-box " + tone;
+            el.style.cssText = "left: " + (PAD + col * CW - 10) + "px; width: " + (cols * CW + 14) +
+              "px; transform-origin: 50% 50%;";
+            panel.appendChild(el);
+            return el;
+          }
+          function label(panel, id, tone, col, cols, text) {
+            var el = document.createElement("div");
+            el.id = id;
+            el.className = "sc-lb " + tone;
+            el.style.cssText = "left: " + (PAD + col * CW - 10) + "px; width: " + (cols * CW + 20) +
+              "px; transform-origin: 50% 50%;";
+            el.textContent = text;
+            panel.appendChild(el);
+            return el;
+          }
+
+          var K = "sc-kw", I = "sc-in";
+
+          // ---- a card lands whole ----
+          // The panel, its number, the finished syntax and the named parts all arrive in one
+          // burst, then hold. One card is one beat, so one click shows one card.
+          function pop(el, at, dur) {
+            tl.fromTo(el, { autoAlpha: 0, scale: 0.4, transformOrigin: "50% 50%" },
+                          { autoAlpha: 1, scale: 1, duration: dur || 0.55, ease: "back.out(2)",
+                            immediateRender: false }, at);
+          }
+          // the box stamps down, its brace draws itself underneath, and the name snaps in
+          function name(bx, br, lb, chars, at) {
+            tl.fromTo(bx, { opacity: 0 }, { opacity: 1, duration: 0.14, ease: "power2.out", immediateRender: false }, at);
+            tl.fromTo(bx, { scale: 1.4, rotation: -3 }, { scale: 1, rotation: 0, duration: 0.55, ease: "back.out(2.8)", immediateRender: false }, at);
+            chars.forEach(function (sp, k) {
+              tl.fromTo(sp, { y: 0 }, { y: -10, duration: 0.14, ease: "power2.out", immediateRender: false }, at + 0.3 + k * 0.022);
+              tl.fromTo(sp, { y: -10 }, { y: 0, duration: 0.7, ease: "elastic.out(1, 0.4)", immediateRender: false }, at + 0.44 + k * 0.022);
+            });
+            var len = Math.ceil(br.path.getTotalLength()) + 2;
+            br.path.setAttribute("stroke-dasharray", len + " " + len);
+            tl.fromTo(br.svg, { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none", immediateRender: false }, at + 0.35);
+            tl.fromTo(br.path, { attr: { "stroke-dashoffset": len } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.5, ease: "power2.out", immediateRender: false }, at + 0.35);
+            tl.fromTo(lb, { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(3)", immediateRender: false }, at + 0.62);
+          }
+          // `parts` is [box, brace, label, the characters it sits over]
+          function show(c, runs, parts, at) {
+            tl.fromTo(c.el, { opacity: 0, scale: 0.85, transformOrigin: "0% 50%" },
+                            { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.6)" }, at);
+            tl.fromTo(c.pill, { opacity: 0, scale: 0.5, transformOrigin: "0% 50%" },
+                              { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(2.4)", immediateRender: false }, at + 0.15);
+            runs.forEach(function (r) { pop(r.el, at + 0.25); });
+            parts.forEach(function (q) { name(q[0], q[1], q[2], q[3], at + 0.5); });
+          }
+
+          var LOOP = [[K, "for "], [null, "i "], [I, "in "], [null, "lst "]];
+          var TOP1 = 40, TOP2 = 366, TOP3 = 692;   // scaled by the stage to 31 / 285 / 540
+          // One card a click. Card 1 lands straight away so the deck opens on it rather
+          // than on black, and the gaps stay under 5s so no clip is split in two.
+          var AT1 = 0.15, AT2 = 4.6, AT3 = 9.05;
+
+          // ---- Card 1: the shape the squares lesson used ----
+          var c1 = card(1, TOP1, 20);
+          var o1 = run(c1.el, "sc1-open", 0, [[null, "["]]);
+          var e1 = run(c1.el, "sc1-expr", 2, [[null, "i*i "]]);
+          var l1 = run(c1.el, "sc1-loop", 6, LOOP);
+          var z1 = run(c1.el, "sc1-close", 19, [[null, "]"]]);
+          show(c1, [o1, e1, l1, z1], [
+            [box(c1.el, "sc1-bx-e", "sc-expr", 2, 3), brace(c1.el, "sc1-br-e", "sc-expr", 2, 3),
+             label(c1.el, "sc1-lb-e", "sc-expr", 2, 3, "expression"), e1.chars.slice(0, 3)],
+            [box(c1.el, "sc1-bx-l", "sc-loop", 6, 12), brace(c1.el, "sc1-br-l", "sc-loop", 6, 12),
+             label(c1.el, "sc1-lb-l", "sc-loop", 6, 12, "loop"), l1.chars.slice(0, 12)],
+          ], AT1);
+
+          // ---- Card 2: the same shape with the if condition on the end ----
+          var c2 = card(2, TOP2, 31);
+          var o2 = run(c2.el, "sc2-open", 0, [[null, "["]]);
+          var e2 = run(c2.el, "sc2-expr", 2, [[null, "i*i "]]);
+          var l2 = run(c2.el, "sc2-loop", 6, LOOP);
+          var n2 = run(c2.el, "sc2-cond", 19, [[K, "if"], [null, "(i%2=="], ["sc-num", "0"], [null, ")"]]);
+          var z2 = run(c2.el, "sc2-close", 30, [[null, "]"]]);
+          show(c2, [o2, e2, l2, n2, z2], [
+            [box(c2.el, "sc2-bx-e", "sc-expr", 2, 3), brace(c2.el, "sc2-br-e", "sc-expr", 2, 3),
+             label(c2.el, "sc2-lb-e", "sc-expr", 2, 3, "expression"), e2.chars.slice(0, 3)],
+            [box(c2.el, "sc2-bx-l", "sc-loop", 6, 12), brace(c2.el, "sc2-br-l", "sc-loop", 6, 12),
+             label(c2.el, "sc2-lb-l", "sc-loop", 6, 12, "loop"), l2.chars.slice(0, 12)],
+            [box(c2.el, "sc2-bx-n", "sc-cond", 19, 10), brace(c2.el, "sc2-br-n", "sc-cond", 19, 10),
+             label(c2.el, "sc2-lb-n", "sc-cond", 19, 10, "if condition"), n2.chars],
+          ], AT2);
+
+          // ---- Card 3: the if else takes the expression's place ----
+          var c3 = card(3, TOP3, 35);
+          var o3 = run(c3.el, "sc3-open", 0, [[null, "["]]);
+          var f3 = run(c3.el, "sc3-ife", 2, [[null, "i "], [K, "if "], [null, "i%2=="], ["sc-num", "0"],
+                                             [K, " else "], ["sc-num", "0"], [null, " "]]);
+          var l3 = run(c3.el, "sc3-loop", 21, LOOP);
+          var z3 = run(c3.el, "sc3-close", 34, [[null, "]"]]);
+          show(c3, [o3, f3, l3, z3], [
+            [box(c3.el, "sc3-bx-f", "sc-expr", 2, 18), brace(c3.el, "sc3-br-f", "sc-expr", 2, 18),
+             label(c3.el, "sc3-lb-f", "sc-expr", 2, 18, "if else"), f3.chars.slice(0, 18)],
+            [box(c3.el, "sc3-bx-l", "sc-loop", 21, 12), brace(c3.el, "sc3-br-l", "sc-loop", 21, 12),
+             label(c3.el, "sc3-lb-l", "sc-loop", 21, 12, "loop"), l3.chars.slice(0, 12)],
+          ], AT3);
+
+          // ---- the three cards clear so the exercise has the frame ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut",
+                                               immediateRender: false }, 13.4);
+          window.__timelines["syntax-card"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Python list comprehension, part 2</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #010101; /* the approved flat dark black */
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #010101;
+      }
+      /* Scene slots stretch over the whole frame; each scene positions its own pieces. */
+      #root > div[data-composition-src] {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-199x" id="root" data-composition-id="main" data-start="0" data-duration="170" data-width="1920" data-height="1080">
+      <!-- The list drawn with the user's tile artwork at the top right: the tiles rain in, the
+           index numbers appear, each value lands on its tile, then `lst` and its arrow.
+           The code and output windows are added when a later part needs them. -->
+      <div data-hf-id="hf-vtcd" id="el-array" data-composition-id="array-box" data-composition-src="compositions/array-box.html" data-start="0" data-duration="170" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+
+      <!-- Part 2: the code window pops up on the left and the list is written there (10.0s). -->
+      <div data-hf-id="hf-nd1k" id="el-code" data-composition-id="code-window" data-composition-src="compositions/code-window.html" data-start="0" data-duration="170" data-track-index="2" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+
+      <!-- The syntax note in the gap under the res list: [ expression | loop ] (52.5s). -->
+      <div data-hf-id="hf-13ii" id="el-syntax" data-composition-id="syntax-card" data-composition-src="compositions/syntax-card.html" data-start="0" data-duration="170" data-track-index="4" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <!-- The lesson fades out at 62s and the practice question is left on the frame. -->
+      <div data-hf-id="hf-u4kv" id="el-question" data-composition-id="question" data-composition-src="compositions/question.html" data-start="0" data-duration="170" data-track-index="5" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <!-- The second practice question, once the pair lesson has cleared (276.6s). -->
+      <div data-hf-id="hf-b4rx" id="el-question-b" data-composition-id="question-b" data-composition-src="compositions/question-b.html" data-start="0" data-duration="170" data-track-index="6" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <!-- Every pair the two lists make, written on the left then moved under lst2 (465s). -->
+      <div data-hf-id="hf-8vlr" id="el-output-panel" data-composition-id="output-panel" data-composition-src="compositions/output-panel.html" data-start="0" data-duration="170" data-track-index="7" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+    </div>
+    <script>
+      (function () {
+        var tl = gsap.timeline({ paused: true });
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

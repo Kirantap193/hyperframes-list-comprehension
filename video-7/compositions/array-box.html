@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>array box</title>
+  </head>
+  <body>
+    <template id="array-box-template">
+      <style>
+        #root { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        /* The user's lists drawn with their own tile artwork, on the right of the frame: five
+           yellow tiles (assets/tile.png) rain down with a squash-and-stretch landing, the white
+           index numbers 0-4 appear above them, each value is a black glyph cut from the user's
+           0-9 sheet (assets/dig-N.png) and lands on its tile, then the variable and a cyan arrow
+           into the first tile - the arrow style of the approved memory videos.
+           Row A is the source list (lst), row B the squares (res). */
+        .ab-tile {
+          position: absolute; opacity: 0;
+          background-image: url("assets/tile.png");
+          background-size: 100% 100%;
+          transform-origin: 50% 100%;   /* it lands on its own bottom edge */
+        }
+        .ab-dig { position: absolute; opacity: 0; background-size: 100% 100%; transform-origin: 50% 100%; }
+        .ab-dig div { position: absolute; background-size: 100% 100%; }
+        .ab-t {
+          position: absolute; opacity: 0;
+          font-family: "JetBrains Mono", Consolas, monospace; font-weight: 500;
+          white-space: pre; color: #ffffff;
+        }
+        .ab-idx { text-align: center; font-size: 34px; line-height: 42px; }
+        /* the squaring shown in the gap between the two lists, one column at a time */
+        .ab-mul { text-align: center; font-size: 38px; line-height: 48px; }
+        /* a pair - the value and its cube - written straight onto a wider tile */
+        .ab-pair {
+          text-align: center; font-size: 36px; line-height: 48px;
+          color: #171717; font-weight: 700; transform-origin: 50% 100%;
+        }
+        /* one character of a string, written straight onto its own small tile */
+        .ab-chr {
+          text-align: center; font-size: 44px; line-height: 56px;
+          color: #171717; font-weight: 700; transform-origin: 50% 100%;
+        }
+        .ab-ring2 {
+          position: absolute; opacity: 0;
+          border: 4px solid #ffae3d; border-radius: 22px;
+          box-shadow: 0 0 18px rgba(255, 174, 61, 0.75), inset 0 0 12px rgba(255, 174, 61, 0.35);
+        }
+        .ab-ring { position: absolute; opacity: 0; border: 4px solid #4fd1ff; border-radius: 22px; box-shadow: 0 0 18px rgba(79, 209, 255, 0.75), inset 0 0 12px rgba(79, 209, 255, 0.35); }
+        #ab-lst, #ab-res, #ab-lst2, #ab-res2, #ab-res3, #ab-sv, #ab-rv, #ab-l1, #ab-l2 { text-align: right; font-size: 38px; line-height: 48px; opacity: 1; }
+        .ab-arrow { position: absolute; left: 0; top: 0; overflow: visible; }
+      </style>
+
+      <div data-hf-id="hf-7b8p" id="root" data-composition-id="array-box" data-width="1920" data-height="1080" data-duration="659"><div data-hf-id="hf-5xk8" id="ab-stage" data-layout-allow-overflow="true" style="position: absolute; inset: 0;"></div></div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var CHAR = 0.075;
+          var root = document.getElementById("root"), stage = document.getElementById("ab-stage");
+          var tl = gsap.timeline({ paused: true });
+
+          // Layout: five tiles ending 32px from the right edge.
+          var TW = 84, TH = 83, GAP = 11, N = 5;
+          var X0 = 1888 - (N * TW + (N - 1) * GAP);
+          // Where each glyph sits on its tile, as a fraction of the tile (measured off the sheet).
+          var DIG = { 0: [0.190, 0.1447, 0.600, 0.7270], 1: [0.2458, 0.1447, 0.4120, 0.7138],
+                      2: [0.2133, 0.1447, 0.580, 0.7138], 3: [0.2267, 0.1480, 0.5667, 0.7237],
+                      4: [0.1881, 0.1480, 0.6337, 0.7105], 5: [0.2067, 0.1447, 0.600, 0.7368],
+                      6: [0.1960, 0.1414, 0.6146, 0.7401], 7: [0.2400, 0.1316, 0.5733, 0.7500],
+                      8: [0.1900, 0.1349, 0.6267, 0.7467], 9: [0.1947, 0.1283, 0.6172, 0.7500] };
+          // A value's glyphs on one tile. One digit keeps its own place on the sheet; two digits
+          // are shrunk to 0.62 and centred as a pair, so every two-digit value reads the same size.
+          function glyphs(value, uniform) {
+            var ds = String(value).split("").map(Number);
+            if (ds.length === 1 && !uniform) {
+              var o = DIG[ds[0]];
+              return [{ d: ds[0], x: o[0], y: o[1], w: o[2], h: o[3] }];
+            }
+            var k = 0.72, G = 0.03, CY = 0.505, out = [];
+            var total = ds.reduce(function (a, d) { return a + DIG[d][2] * k; }, 0) + G * (ds.length - 1);
+            var x = (1 - total) / 2;
+            ds.forEach(function (d) {
+              var w = DIG[d][2] * k, h = DIG[d][3] * k;
+              out.push({ d: d, x: x, y: CY - h / 2, w: w, h: h });
+              x += w + G;
+            });
+            return out;
+          }
+
+          function add(id, cls, css, text) {
+            var el = document.createElement("div");
+            if (id) el.id = id;
+            el.className = cls;
+            el.style.cssText = css;
+            if (text !== undefined) el.textContent = text;
+            stage.appendChild(el);
+            return el;
+          }
+          // One list: index numbers, tiles, and the value glyphs sitting on them.
+          function buildRow(p, values, ty, uniform) {
+            values.forEach(function (v, i) {
+              var x = X0 + i * (TW + GAP);
+              add(p + "i" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (ty - 50) + "px; width: " + TW + "px;", String(i));
+              add(p + "t" + i, "ab-tile", "left: " + x + "px; top: " + ty + "px; width: " + TW + "px; height: " + TH + "px;");
+              var g = glyphs(v, uniform);
+              if (g.length === 1) {
+                add(p + "v" + i, "ab-dig", "left: " + (x + g[0].x * TW) + "px; top: " + (ty + g[0].y * TH) + "px; width: " + (g[0].w * TW) +
+                  "px; height: " + (g[0].h * TH) + "px; background-image: url(\"assets/dig-" + g[0].d + ".png\");");
+                return;
+              }
+              var x0 = Math.min.apply(null, g.map(function (b) { return b.x; }));
+              var y0 = Math.min.apply(null, g.map(function (b) { return b.y; }));
+              var x1 = Math.max.apply(null, g.map(function (b) { return b.x + b.w; }));
+              var y1 = Math.max.apply(null, g.map(function (b) { return b.y + b.h; }));
+              var wrap = add(p + "v" + i, "ab-dig", "left: " + (x + x0 * TW) + "px; top: " + (ty + y0 * TH) +
+                "px; width: " + ((x1 - x0) * TW) + "px; height: " + ((y1 - y0) * TH) + "px;");
+              g.forEach(function (b) {
+                var el = document.createElement("div");
+                el.style.cssText = "left: " + ((b.x - x0) * TW) + "px; top: " + ((b.y - y0) * TH) + "px; width: " + (b.w * TW) +
+                  "px; height: " + (b.h * TH) + "px; background-image: url(\"assets/dig-" + b.d + ".png\");";
+                wrap.appendChild(el);
+              });
+            });
+          }
+          // The cyan arrow of the approved style, from the variable into the first tile.
+          var SVG_OPEN = '<svg id="ID" class="ab-arrow" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">' +
+            '<defs><mask id="ID-m" maskUnits="userSpaceOnUse" x="0" y="0" width="1920" height="1080">' +
+            '<path id="ID-rv" d="M AX0 AY H AX1" fill="none" stroke="#ffffff" stroke-width="14" /></mask></defs>' +
+            '<g style="filter: drop-shadow(0 0 6px rgba(79, 209, 255, 0.65));">' +
+            '<path d="M AX0 AY H AX1" fill="none" stroke="#4fd1ff" stroke-width="4" stroke-linecap="round" mask="url(#ID-m)" />' +
+            '<polygon id="ID-hd" points="HDX,AY HBX,HUY HBX,HLY" fill="#4fd1ff" opacity="0" /></g></svg>';
+          function mkArrow(id, ay) {
+            var AX0 = X0 - 100, AX1 = X0 - 28;
+            stage.insertAdjacentHTML("beforeend", '<svg id="' + id + '" class="ab-arrow" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">' +
+              '<defs><mask id="' + id + '-m" maskUnits="userSpaceOnUse" x="0" y="0" width="1920" height="1080">' +
+              '<path id="' + id + '-rv" d="M ' + AX0 + ' ' + ay + ' H ' + AX1 + '" fill="none" stroke="#ffffff" stroke-width="14" /></mask></defs>' +
+              '<g style="filter: drop-shadow(0 0 6px rgba(79, 209, 255, 0.65));">' +
+              '<path d="M ' + AX0 + ' ' + ay + ' H ' + AX1 + '" fill="none" stroke="#4fd1ff" stroke-width="4" stroke-linecap="round" mask="url(#' + id + '-m)" />' +
+              '<polygon id="' + id + '-hd" points="' + (AX1 + 16) + ',' + ay + ' ' + (AX1 - 4) + ',' + (ay - 11) + ' ' + (AX1 - 4) + ',' + (ay + 11) + '" fill="#4fd1ff" opacity="0" /></g></svg>');
+            stage.lastChild.setAttribute("data-layout-allow-overflow", "true");
+          }
+
+          // Row A: the source list, at the top. Row B: its squares, below it.
+          var A = [5, 7, 1, 2, 4], B = [25, 49, 1, 4, 16], TYA = 150, TYB = 400, TYM = 290;
+          buildRow("ab-a", A, TYA, true);
+          buildRow("ab-b", B, TYB, true);
+          // the variable sits right against the arrow, which reaches into the first tile
+          add("ab-lst", "ab-t", "left: " + (X0 - 296) + "px; top: " + (TYA + TH / 2 - 24) + "px; width: 160px;", "lst");
+          add("ab-res", "ab-t", "left: " + (X0 - 296) + "px; top: " + (TYB + TH / 2 - 24) + "px; width: 160px;", "res");
+          mkArrow("ab-ar", Math.round(TYA + TH / 2));
+          mkArrow("ab-br", Math.round(TYB + TH / 2));
+          // Between the lists: i x i for each column, and a ring that moves along the results.
+          A.forEach(function (v, i) {
+            var x = X0 + i * (TW + GAP);
+            add("ab-m" + i, "ab-t ab-mul", "left: " + x + "px; top: " + TYM + "px; width: " + TW + "px;", v + " × " + v);
+          });
+
+          // ---- the moves ----
+          // A tile rains down and lands: it stretches as it falls, squashes on impact, springs back.
+          function rain(id, at) {
+            var s = "#" + id;
+            tl.set(s, { scaleX: 0.82, scaleY: 1.3 }, 0);
+            tl.fromTo(s, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(s, { y: -340 }, { y: 0, duration: 0.42, ease: "power2.in", immediateRender: false }, at);
+            tl.fromTo(s, { scaleX: 0.82, scaleY: 1.3 }, { scaleX: 1.32, scaleY: 0.7, duration: 0.09, ease: "power2.out", immediateRender: false }, at + 0.42);
+            tl.fromTo(s, { scaleX: 1.32, scaleY: 0.7 }, { scaleX: 1, scaleY: 1, duration: 0.7, ease: "elastic.out(1, 0.45)", immediateRender: false }, at + 0.51);
+          }
+          // A value drops onto its tile; the tile gives under it, then settles.
+          function drop(id, tile, at) {
+            var s = "#" + id;
+            tl.set(s, { scaleX: 0.86, scaleY: 1.24 }, 0);
+            tl.fromTo(s, { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(s, { y: -240 }, { y: 0, duration: 0.34, ease: "power2.in", immediateRender: false }, at);
+            tl.fromTo(s, { scaleX: 0.86, scaleY: 1.24 }, { scaleX: 1.2, scaleY: 0.78, duration: 0.08, ease: "power2.out", immediateRender: false }, at + 0.34);
+            tl.fromTo(s, { scaleX: 1.2, scaleY: 0.78 }, { scaleX: 1, scaleY: 1, duration: 0.6, ease: "elastic.out(1, 0.5)", immediateRender: false }, at + 0.42);
+            tl.fromTo("#" + tile, { scaleX: 1, scaleY: 1 }, { scaleX: 1.1, scaleY: 0.88, duration: 0.08, ease: "power2.out", immediateRender: false }, at + 0.34);
+            tl.fromTo("#" + tile, { scaleX: 1.1, scaleY: 0.88 }, { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1, 0.5)", immediateRender: false }, at + 0.42);
+          }
+          // The pop and type-on of the approved style.
+          function pop(id, at, dur) {
+            var el = document.getElementById(id);
+            tl.fromTo(el, { scale: 0.3, transformOrigin: "50% 50%" }, { scale: 1, duration: dur || 0.5, ease: "back.out(1.6)" }, at);
+            tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out", immediateRender: false }, at);
+          }
+          // ---- one ring per row: it glides along instead of popping in and out ----
+          function walker(id, cls, x0, ty, w, h, extra) {
+            return add(id, cls, "left: " + (x0 - 8) + "px; top: " + (ty - 8) + "px; width: " + (w + 16) +
+              "px; height: " + (h + 16) + "px;" + (extra || ""));
+          }
+          function ringOn(sel, x, at) {
+            tl.set(sel, { x: x, visibility: "visible" }, at - 0.3);
+            tl.fromTo(sel, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out", immediateRender: false }, at - 0.3);
+          }
+          function ringTo(sel, from, to, at, dur) {
+            var d = dur || 0.5;
+            tl.fromTo(sel, { x: from }, { x: to, duration: d, ease: "power2.inOut", immediateRender: false }, at - d);
+          }
+          function ringOff(sel, at) {
+            tl.fromTo(sel, { opacity: 1 }, { opacity: 0, duration: 0.3, ease: "power1.inOut", immediateRender: false }, at);
+            tl.set(sel, { visibility: "hidden" }, at + 0.32);   // it is gone for good, not just clear
+          }
+          // the slot it arrives on gives a little under it - the only lift left in the move
+          function bump(sels, at) {
+            sels.forEach(function (sl) {
+              tl.fromTo(sl, { scaleX: 1, scaleY: 1 }, { scaleX: 1.1, scaleY: 1.1, duration: 0.14, ease: "power2.out", immediateRender: false }, at);
+              tl.fromTo(sl, { scaleX: 1.1, scaleY: 1.1 }, { scaleX: 1, scaleY: 1, duration: 0.65, ease: "elastic.out(1, 0.45)", immediateRender: false }, at + 0.14);
+            });
+          }
+          function type(id, at) {
+            var el = document.getElementById(id), text = el.textContent;
+            el.textContent = "";
+            for (var i = 0; i < text.length; i++) {
+              var span = document.createElement("span");
+              span.textContent = text.charAt(i);
+              el.appendChild(span);
+              tl.fromTo(span, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01, ease: "none" }, at);
+              at += CHAR;
+            }
+            return at;
+          }
+          function draw(id, at) {
+            var path = document.getElementById(id + "-rv"), len = Math.ceil(path.getTotalLength()) + 2;
+            path.setAttribute("stroke-dasharray", len + " " + len);
+            tl.fromTo(path, { attr: { "stroke-dashoffset": len } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.7, ease: "power1.inOut" }, at);
+            tl.fromTo("#" + id + "-hd", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power1.out", immediateRender: false }, at + 0.6);
+          }
+          // Every list is built the same way: the tiles rain in, the indices appear, the values land.
+          function fill(p, values, t0) {
+            values.forEach(function (v, i) { rain(p + "t" + i, t0 + i * 0.18); });
+            values.forEach(function (v, i) { pop(p + "i" + i, t0 + 2.0 + i * 0.22); });
+            values.forEach(function (v, i) { drop(p + "v" + i, p + "t" + i, t0 + 3.5 + i * 0.3); });
+          }
+
+          // ---- Part 1: the source list ----
+          fill("ab-a", A, 0.3);
+          type("ab-lst", 6.0);
+          draw("ab-ar", 6.6);
+
+          // ---- Part 2: the code is written (code-window.html, 10.0 - 12.5), then the squares ----
+          fill("ab-b", B, 13.2);
+          type("ab-res", 19.4);
+          draw("ab-br", 20.0);
+
+          // The ring travels left to right along the results, one slot at a time.
+          walker("ab-rb", "ab-ring", X0, TYB, TW, TH);
+          function highlight(i, at) {
+            if (i === 0) ringOn("#ab-rb", 0, at);
+            else ringTo("#ab-rb", (i - 1) * (TW + GAP), i * (TW + GAP), at);
+            bump(["#ab-bt" + i, "#ab-bv" + i], at);
+          }
+
+          // ---- Part 4: where each result comes from - 5 x 5 is 25, then 7 x 7 is 49, and so on.
+          // Only the one being worked out is on screen: each sum clears as the next appears.
+          var M0 = 30.0, STEP = 1.4;
+          A.forEach(function (v, i) {
+            var at = M0 + i * STEP;
+            pop("ab-m" + i, at, 0.45);
+            tl.fromTo("#ab-m" + i, { opacity: 1 }, { opacity: 0, duration: 0.3, ease: "power1.inOut", immediateRender: false }, at + STEP - 0.1);
+            highlight(i, at + 0.45);
+          });
+          ringOff("#ab-rb", M0 + 4 * STEP + 0.9);
+
+          // ---- Part 7: the lists come back, and res is rebuilt from the even values only ----
+          // The squares row is dropped while the frame is dark; the source list is untouched,
+          // so the composition simply fades back in around it.
+          var RESET7 = 73.9, BACK7 = 74.8;
+          var OLD7 = ["ab-res", "ab-br"];
+          B.forEach(function (v, i) { OLD7.push("ab-bi" + i, "ab-bt" + i, "ab-bv" + i); });
+          OLD7.forEach(function (id) { tl.set("#" + id, { autoAlpha: 0 }, RESET7); });
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK7);
+
+          // The new res list is two tiles wide: 2 and 4, the only values the if lets through.
+          var C = [2, 4], FROM = [3, 4];
+          buildRow("ab-c", C, TYB, true);
+          // a ring walks the source list so it is clear which element is being tested
+          walker("ab-sb", "ab-ring", X0, TYA, TW, TH);
+          function scan(i, at) {
+            if (i === 0) ringOn("#ab-sb", 0, at);
+            else ringTo("#ab-sb", (i - 1) * (TW + GAP), i * (TW + GAP), at);
+            bump(["#ab-at" + i, "#ab-av" + i], at);
+          }
+          // An even value lifts off its own tile and travels down into the res list.
+          function fly(k, i, v, at) {
+            var g = glyphs(v, true)[0], id = "ab-f" + k;
+            add(id, "ab-dig", "left: " + (X0 + i * (TW + GAP) + g.x * TW) + "px; top: " + (TYA + g.y * TH) +
+              "px; width: " + (g.w * TW) + "px; height: " + (g.h * TH) +
+              "px; background-image: url(\"assets/dig-" + g.d + ".png\");");
+            var s = "#" + id, land = at + 0.75;
+            tl.fromTo(s, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(s, { x: 0, y: 0 }, { x: (k - i) * (TW + GAP), y: TYB - TYA, duration: 0.75, ease: "power2.inOut", immediateRender: false }, at);
+            tl.fromTo(s, { opacity: 1 }, { opacity: 0, duration: 0.01, ease: "none", immediateRender: false }, land);
+            tl.fromTo("#ab-cv" + k, { opacity: 0 }, { opacity: 1, duration: 0.01, ease: "none", immediateRender: false }, land);
+            tl.fromTo("#ab-cv" + k, { scaleX: 1.2, scaleY: 0.78 }, { scaleX: 1, scaleY: 1, duration: 0.6, ease: "elastic.out(1, 0.5)", immediateRender: false }, land);
+            tl.fromTo("#ab-ct" + k, { scaleX: 1, scaleY: 1 }, { scaleX: 1.1, scaleY: 0.88, duration: 0.08, ease: "power2.out", immediateRender: false }, land);
+            tl.fromTo("#ab-ct" + k, { scaleX: 1.1, scaleY: 0.88 }, { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1, 0.5)", immediateRender: false }, land + 0.08);
+          }
+
+          // the ring tests 5, 7 and 1 and moves on; 2 and 4 pass and drop into res
+          var SCAN = [[88.0, 89.0], [89.1, 90.1], [90.2, 91.2], [91.3, 93.5], [93.6, 95.8]];
+          SCAN.forEach(function (t, i) { scan(i, t[0]); });
+          ringOff("#ab-sb", SCAN[SCAN.length - 1][1]);
+          var LAND = [91.6, 93.9];
+          C.forEach(function (v, k) {
+            rain("ab-ct" + k, LAND[k]);
+            fly(k, FROM[k], v, LAND[k] + 0.5);
+            pop("ab-ci" + k, LAND[k] + 1.35);
+          });
+          // the variable and its arrow follow the finished list, never lead it
+          function showVar(at) {
+            ["#ab-res", "#ab-br"].forEach(function (sel) {
+              tl.fromTo(sel, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.35, ease: "power1.out", immediateRender: false }, at);
+            });
+          }
+          function hideVar(at) {
+            ["#ab-res", "#ab-br"].forEach(function (sel) {
+              tl.fromTo(sel, { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.35, ease: "power1.inOut", immediateRender: false }, at);
+            });
+          }
+          showVar(95.6);
+
+
+          // A result row is swapped for the next one: the old tiles leave, the new ones are
+          // filled from the source list exactly as before.
+          function clearRow(p, n, at) {
+            for (var i = 0; i < n; i++) {
+              ["i", "t", "v"].forEach(function (k) {
+                tl.fromTo("#" + p + k + i, { opacity: 1 }, { opacity: 0, duration: 0.45, ease: "power1.inOut", immediateRender: false }, at + i * 0.08);
+              });
+            }
+          }
+          // one pass of the source list: every element is ringed, the ones that pass drop into res
+          function pass(p, values, from, steps, t0) {
+            var at = t0, k = 0;
+            A.forEach(function (v, i) {
+              var keep = from.indexOf(i) >= 0, hold = keep ? 1.6 : 1.0;
+              scan(i, at);
+              if (keep) {
+                rain(p + "t" + k, at + 0.2);
+                fly2(p, k, i, v, at + 0.6);
+                pop(p + "i" + k, at + 1.4);
+                k++;
+              }
+              at += hold;
+            });
+            return at;
+          }
+          // the same flight as part 7, for any result row
+          function fly2(p, k, i, v, at) {
+            var g = glyphs(v, true)[0], id = p + "f" + k;
+            add(id, "ab-dig", "left: " + (X0 + i * (TW + GAP) + g.x * TW) + "px; top: " + (TYA + g.y * TH) +
+              "px; width: " + (g.w * TW) + "px; height: " + (g.h * TH) +
+              "px; background-image: url(\"assets/dig-" + g.d + ".png\");");
+            var sel = "#" + id, land = at + 0.75;
+            tl.fromTo(sel, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(sel, { x: 0, y: 0 }, { x: (k - i) * (TW + GAP), y: TYB - TYA, duration: 0.75, ease: "power2.inOut", immediateRender: false }, at);
+            tl.fromTo(sel, { opacity: 1 }, { opacity: 0, duration: 0.01, ease: "none", immediateRender: false }, land);
+            tl.fromTo("#" + p + "v" + k, { opacity: 0 }, { opacity: 1, duration: 0.01, ease: "none", immediateRender: false }, land);
+            tl.fromTo("#" + p + "v" + k, { scaleX: 1.2, scaleY: 0.78 }, { scaleX: 1, scaleY: 1, duration: 0.6, ease: "elastic.out(1, 0.5)", immediateRender: false }, land);
+            tl.fromTo("#" + p + "t" + k, { scaleX: 1, scaleY: 1 }, { scaleX: 1.1, scaleY: 0.88, duration: 0.08, ease: "power2.out", immediateRender: false }, land);
+            tl.fromTo("#" + p + "t" + k, { scaleX: 1.1, scaleY: 0.88 }, { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1, 0.5)", immediateRender: false }, land + 0.08);
+          }
+
+          // ---- Part 9: the same list, the odd values ----
+          var D9 = [5, 7, 1], FROM9 = [0, 1, 2];
+          buildRow("ab-d", D9, TYB, true);
+          clearRow("ab-c", 2, 117.0);
+          hideVar(117.0);
+          ringOff("#ab-sb", pass("ab-d", D9, FROM9, null, 120.0) - 0.1);
+          showVar(125.4);
+
+          // ---- Part 10: the teacher's own list, and a condition with an "or" in it ----
+          // Eight values need a narrower tile to leave the long comprehension any room beside
+          // them, so this section draws both rows at 60% with its own geometry.
+          var TW2 = 78, TH2 = 77, GAP2 = 9, X02 = 1201, TYA2 = 160, TYB2 = 430;
+          var G = [5, 3, 1, 2, 4, 6, 8, 9], H = [3, 2, 4, 6, 8, 9], FROMH = [1, 3, 4, 5, 6, 7];
+
+          function buildRow2(p, values, ty) {
+            values.forEach(function (v, i) {
+              var x = X02 + i * (TW2 + GAP2), b = glyphs(v, true)[0];
+              add(p + "i" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (ty - 42) + "px; width: " + TW2 +
+                "px; font-size: 28px; line-height: 35px;", String(i));
+              add(p + "t" + i, "ab-tile", "left: " + x + "px; top: " + ty + "px; width: " + TW2 + "px; height: " + TH2 + "px;");
+              add(p + "v" + i, "ab-dig", "left: " + (x + b.x * TW2) + "px; top: " + (ty + b.y * TH2) +
+                "px; width: " + (b.w * TW2) + "px; height: " + (b.h * TH2) +
+                "px; background-image: url(\"assets/dig-" + b.d + ".png\");");
+            });
+          }
+          function mkArrow3(id, ay, x0) {
+            var AX0 = x0 - 124, AX1 = x0 - 34;
+            stage.insertAdjacentHTML("beforeend", SVG_OPEN.replace(/ID/g, id)
+              .replace(/AX0/g, AX0).replace(/AX1/g, AX1).replace(/AY/g, ay)
+              .replace(/HDX/g, AX1 + 16).replace(/HBX/g, AX1 - 4)
+              .replace(/HUY/g, ay - 11).replace(/HLY/g, ay + 11));
+            stage.lastChild.setAttribute("data-layout-allow-overflow", "true");
+          }
+          function mkArrow2(id, ay) {
+            var AX0 = X02 - 124, AX1 = X02 - 34;
+            stage.insertAdjacentHTML("beforeend", SVG_OPEN.replace(/ID/g, id)
+              .replace(/AX0/g, AX0).replace(/AX1/g, AX1).replace(/AY/g, ay)
+              .replace(/HDX/g, AX1 + 16).replace(/HBX/g, AX1 - 4)
+              .replace(/HUY/g, ay - 11).replace(/HLY/g, ay + 11));
+            stage.lastChild.setAttribute("data-layout-allow-overflow", "true");
+          }
+          function fly3(k, i, v, at) {
+            var b = glyphs(v, true)[0], id = "ab-hf" + k;
+            add(id, "ab-dig", "left: " + (X02 + i * (TW2 + GAP2) + b.x * TW2) + "px; top: " + (TYA2 + b.y * TH2) +
+              "px; width: " + (b.w * TW2) + "px; height: " + (b.h * TH2) +
+              "px; background-image: url(\"assets/dig-" + b.d + ".png\");");
+            var sel = "#" + id, land = at + 0.7;
+            tl.fromTo(sel, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(sel, { x: 0, y: 0 }, { x: (k - i) * (TW2 + GAP2), y: TYB2 - TYA2, duration: 0.7, ease: "power2.inOut", immediateRender: false }, at);
+            tl.fromTo(sel, { opacity: 1 }, { opacity: 0, duration: 0.01, ease: "none", immediateRender: false }, land);
+            tl.fromTo("#ab-hv" + k, { opacity: 0 }, { opacity: 1, duration: 0.01, ease: "none", immediateRender: false }, land);
+            tl.fromTo("#ab-hv" + k, { scaleX: 1.2, scaleY: 0.78 }, { scaleX: 1, scaleY: 1, duration: 0.6, ease: "elastic.out(1, 0.5)", immediateRender: false }, land);
+            tl.fromTo("#ab-ht" + k, { scaleX: 1, scaleY: 1 }, { scaleX: 1.1, scaleY: 0.88, duration: 0.08, ease: "power2.out", immediateRender: false }, land);
+            tl.fromTo("#ab-ht" + k, { scaleX: 1.1, scaleY: 0.88 }, { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1, 0.5)", immediateRender: false }, land + 0.08);
+          }
+          function scan2(i, at) {
+            if (i === 0) ringOn("#ab-ub", 0, at);
+            else ringTo("#ab-ub", (i - 1) * (TW2 + GAP2), i * (TW2 + GAP2), at, 0.42);
+            bump(["#ab-gt" + i, "#ab-gv" + i], at);
+          }
+
+          buildRow2("ab-g", G, TYA2);
+          buildRow2("ab-h", H, TYB2);
+          add("ab-lst2", "ab-t", "left: " + (X02 - 296) + "px; top: 169px; width: 160px;", "lst");
+          add("ab-res2", "ab-t", "left: " + (X02 - 296) + "px; top: 439px; width: 160px;", "res");
+          mkArrow2("ab-ar2", TYA2 + Math.round(TH2 / 2));
+          mkArrow2("ab-br2", TYB2 + Math.round(TH2 / 2));
+          walker("ab-ub", "ab-ring", X02 + 2, TYA2 + 2, TW2 - 4, TH2 - 4, " border-width: 3px; border-radius: 16px;");
+
+          // the five-value lists leave; the teacher's eight-value list takes their place
+          clearRow("ab-d", 3, 133.0);
+          hideVar(133.0);
+          A.forEach(function (v, i) {
+            ["ab-ai", "ab-at", "ab-av"].forEach(function (pre) {
+              tl.fromTo("#" + pre + i, { opacity: 1 }, { opacity: 0, duration: 0.45, ease: "power1.inOut", immediateRender: false }, 134.5 + i * 0.08);
+            });
+          });
+          ["#ab-lst", "#ab-ar"].forEach(function (sel) {
+            tl.fromTo(sel, { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.45, ease: "power1.inOut", immediateRender: false }, 134.5);
+          });
+
+          // it is built the same way as every list before it, and named once it is finished
+          G.forEach(function (v, i) { rain("ab-gt" + i, 139.0 + i * 0.16); });
+          G.forEach(function (v, i) { pop("ab-gi" + i, 141.2 + i * 0.16); });
+          G.forEach(function (v, i) { drop("ab-gv" + i, "ab-gt" + i, 142.8 + i * 0.24); });
+          type("ab-lst2", 145.8);
+          draw("ab-ar2", 146.2);
+
+          // "if i%2==0 or i%3==0" - the 3, 6 and 9 are what the second half of the condition catches
+          var atH = 151.0;
+          G.forEach(function (v, i) {
+            var k = FROMH.indexOf(i), keep = k >= 0, hold = keep ? 1.3 : 0.8;
+            scan2(i, atH);
+            if (keep) {
+              rain("ab-ht" + k, atH + 0.15);
+              fly3(k, i, v, atH + 0.45);
+              pop("ab-hi" + k, atH + 1.15);
+            }
+            atH += hold;
+          });
+          ringOff("#ab-ub", atH - 0.1);
+          type("ab-res2", 161.2);
+          draw("ab-br2", 161.6);
+
+
+
+          // ---- The lesson clears away so the practice question has the frame ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 62.0);
+
+          // ---- Part 12: "i if i%2==0 else 0" - the value, or a zero standing in for it ----
+          // The eight-value rows leave and the original five-value list is built again, then a
+          // res row that keeps the even values and puts a 0 where an odd one was.
+          var OUT12 = 179.2;
+          var GONE12 = ["ab-lst2", "ab-res2", "ab-ar2", "ab-br2"];
+          G.forEach(function (v, i) { GONE12.push("ab-gi" + i, "ab-gt" + i, "ab-gv" + i); });
+          H.forEach(function (v, i) { GONE12.push("ab-hi" + i, "ab-ht" + i, "ab-hv" + i); });
+          GONE12.forEach(function (id) {
+            tl.fromTo("#" + id, { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.6, ease: "power1.inOut", immediateRender: false }, OUT12);
+          });
+
+          // the tiles rain back in and the values land, exactly as they did the first time
+          fill("ab-a", A, 181.0);
+          ["#ab-lst", "#ab-ar"].forEach(function (sel) {
+            tl.fromTo(sel, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.35, ease: "power1.out", immediateRender: false }, 187.4);
+          });
+
+          var J = [0, 0, 0, 2, 4];
+          buildRow("ab-j", J, TYB, true);
+          fill("ab-j", J, 189.0);
+          showVar(195.4);
+
+          // ---- Part 14: the input, and what res looks like holding a pair for each value ----
+          // Each slot now carries the value together with its cube, so the tile is wider and
+          // the pair is written on it rather than cut from the digit sheet.
+          var OUT14 = 239.0;
+          var GONE14 = ["ab-res", "ab-br"];
+          J.forEach(function (v, i) { GONE14.push("ab-ji" + i, "ab-jt" + i, "ab-jv" + i); });
+          GONE14.forEach(function (id) {
+            tl.fromTo("#" + id, { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.6, ease: "power1.inOut", immediateRender: false }, OUT14);
+          });
+
+          // The pair is eight characters wide, so its tile is a tight rectangle rather than a
+          // square: the box is smaller, the value fills it, and the row still sits exactly
+          // where every other res row has sat.
+          var TW3 = 160, TH3 = 92, GAP3 = 12, X03 = 1888 - (5 * TW3 + 4 * GAP3), TY3 = TYB + 18;
+          var PAIRS = ["(5,125)", "(7,343)", "(1,1)", "(2,8)", "(4,64)"];
+          PAIRS.forEach(function (t, i) {
+            var x = X03 + i * (TW3 + GAP3);
+            add("ab-ki" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (TY3 - 46) + "px; width: " + TW3 +
+              "px; font-size: 32px; line-height: 40px;", String(i));
+            add("ab-kt" + i, "ab-tile", "left: " + x + "px; top: " + TY3 + "px; width: " + TW3 + "px; height: " + TH3 + "px;");
+            add("ab-kv" + i, "ab-t ab-pair", "left: " + x + "px; top: " + (TY3 + 22) + "px; width: " + TW3 + "px;", t);
+          });
+          add("ab-res3", "ab-t", "left: " + (X03 - 296) + "px; top: " + (TY3 + TH3 / 2 - 24) + "px; width: 160px;", "res");
+          mkArrow3("ab-br3", TY3 + Math.round(TH3 / 2), X03);
+
+          // built the same way every res row has been built
+          PAIRS.forEach(function (t, i) { rain("ab-kt" + i, 241.0 + i * 0.18); });
+          PAIRS.forEach(function (t, i) { pop("ab-ki" + i, 243.0 + i * 0.22); });
+          PAIRS.forEach(function (t, i) { drop("ab-kv" + i, "ab-kt" + i, 244.5 + i * 0.3); });
+          // and named only once it is finished
+          type("ab-res3", 247.6);
+          draw("ab-br3", 248.0);
+
+          // ---- everything clears for the next practice question ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 275.0);
+
+          // ---- Part 16: "Hello World" is a string, so every character gets its own slot ----
+          var TW4 = 68, TH4 = 68, GAP4 = 8, X04 = 1888 - (11 * TW4 + 10 * GAP4);
+          var TY4 = 180, TY5 = 496;
+          var TEXT = "Hello World".split(""), VOW = [1, 4, 7];
+
+          function buildChars(p, list, ty) {
+            list.forEach(function (c, i) {
+              var x = X04 + i * (TW4 + GAP4);
+              add(p + "i" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (ty - 40) + "px; width: " + TW4 +
+                "px; font-size: 28px; line-height: 36px;", String(i));
+              add(p + "t" + i, "ab-tile", "left: " + x + "px; top: " + ty + "px; width: " + TW4 + "px; height: " + TH4 + "px;");
+              add(p + "v" + i, "ab-t ab-chr", "left: " + x + "px; top: " + (ty + 6) + "px; width: " + TW4 + "px;", c);
+            });
+          }
+          buildChars("ab-s", TEXT, TY4);
+          buildChars("ab-r", VOW.map(function (i) { return TEXT[i]; }), TY5);
+          add("ab-sv", "ab-t", "left: " + (X04 - 296) + "px; top: " + (TY4 + 5) + "px; width: 160px;", "s");
+          add("ab-rv", "ab-t", "left: " + (X04 - 296) + "px; top: " + (TY5 + 5) + "px; width: 160px;", "res");
+          mkArrow3("ab-sa", TY4 + 34, X04);
+          mkArrow3("ab-ra", TY5 + 34, X04);
+          walker("ab-wb", "ab-ring", X04 + 2, TY4 + 2, TW4 - 4, TH4 - 4, " border-width: 3px; border-radius: 14px;");
+
+          // the lists from the pair lesson are dropped while the frame is dark, so only the
+          // string comes back with it
+          var GONE16 = ["ab-lst", "ab-ar", "ab-res3", "ab-br3"];
+          A.forEach(function (v, i) { GONE16.push("ab-ai" + i, "ab-at" + i, "ab-av" + i); });
+          PAIRS.forEach(function (t, i) { GONE16.push("ab-ki" + i, "ab-kt" + i, "ab-kv" + i); });
+          GONE16.forEach(function (id) { tl.set("#" + id, { autoAlpha: 0 }, 289.5); });
+
+          // the string is built exactly the way every list has been
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, 290.0);
+          TEXT.forEach(function (c, i) { rain("ab-st" + i, 290.6 + i * 0.15); });
+          TEXT.forEach(function (c, i) { pop("ab-si" + i, 292.9 + i * 0.15); });
+          TEXT.forEach(function (c, i) { drop("ab-sv" + i, "ab-st" + i, 294.9 + i * 0.2); });
+          type("ab-sv", 298.4);
+          draw("ab-sa", 298.7);
+
+          // the ring walks the string; the vowels drop into res
+          function scan4(i, at) {
+            if (i === 0) ringOn("#ab-wb", 0, at);
+            else ringTo("#ab-wb", (i - 1) * (TW4 + GAP4), i * (TW4 + GAP4), at, 0.38);
+            bump(["#ab-st" + i, "#ab-sv" + i], at);
+          }
+          function fly4(k, i, at) {
+            var id = "ab-rf" + k, x = X04 + i * (TW4 + GAP4);
+            add(id, "ab-t ab-chr", "left: " + x + "px; top: " + (TY4 + 6) + "px; width: " + TW4 + "px;", TEXT[i]);
+            var sel = "#" + id, land = at + 0.65;
+            tl.fromTo(sel, { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "power1.out", immediateRender: false }, at);
+            tl.fromTo(sel, { x: 0, y: 0 }, { x: (k - i) * (TW4 + GAP4), y: TY5 - TY4, duration: 0.65, ease: "power2.inOut", immediateRender: false }, at);
+            tl.fromTo(sel, { opacity: 1 }, { opacity: 0, duration: 0.01, ease: "none", immediateRender: false }, land);
+            tl.fromTo("#ab-rv" + k, { opacity: 0 }, { opacity: 1, duration: 0.01, ease: "none", immediateRender: false }, land);
+            tl.fromTo("#ab-rv" + k, { scaleX: 1.2, scaleY: 0.78 }, { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1, 0.5)", immediateRender: false }, land);
+            tl.fromTo("#ab-rt" + k, { scaleX: 1, scaleY: 1 }, { scaleX: 1.1, scaleY: 0.88, duration: 0.08, ease: "power2.out", immediateRender: false }, land);
+            tl.fromTo("#ab-rt" + k, { scaleX: 1.1, scaleY: 0.88 }, { scaleX: 1, scaleY: 1, duration: 0.5, ease: "elastic.out(1, 0.5)", immediateRender: false }, land + 0.08);
+          }
+          var atS = 317.0, kS = 0;
+          TEXT.forEach(function (c, i) {
+            var keep = VOW.indexOf(i) >= 0, hold = keep ? 1.2 : 0.7;
+            scan4(i, atS);
+            if (keep) {
+              rain("ab-rt" + kS, atS + 0.12);
+              fly4(kS, i, atS + 0.4);
+              pop("ab-ri" + kS, atS + 1.0);
+              kS++;
+            }
+            atS += hold;
+          });
+          ringOff("#ab-wb", atS - 0.08);
+          type("ab-rv", 327.4);
+          draw("ab-ra", 327.7);
+
+          // ---- Part 19: the next exercise, shown only as its input and its output ----
+          // "This is the input format, and that is the output format." Even values are squared,
+          // odd values are doubled - the lists alone say what is being asked.
+          var OUT19 = 379.0, BACK19 = 380.2;
+          var GONE19 = ["ab-sv", "ab-rv", "ab-sa", "ab-ra"];
+          TEXT.forEach(function (c, i) { GONE19.push("ab-si" + i, "ab-st" + i, "ab-sv" + i); });
+          VOW.forEach(function (v, k) { GONE19.push("ab-ri" + k, "ab-rt" + k, "ab-rv" + k); });
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, OUT19);
+          GONE19.forEach(function (id) { tl.set("#" + id, { autoAlpha: 0 }, OUT19 + 0.9); });
+
+          var P19 = [1, 4, 2, 3, 5], Q19 = [2, 16, 4, 6, 10];
+          buildRow("ab-p", P19, TYA, true);
+          buildRow("ab-q", Q19, TYB, true);
+
+          // both rows are built the way every list in this video has been
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK19);
+          fill("ab-p", P19, 380.8);
+          ["#ab-lst", "#ab-ar"].forEach(function (sel) {
+            tl.fromTo(sel, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.35, ease: "power1.out", immediateRender: false }, 387.2);
+          });
+          fill("ab-q", Q19, 388.6);
+          ["#ab-res", "#ab-br"].forEach(function (sel) {
+            tl.fromTo(sel, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.35, ease: "power1.out", immediateRender: false }, 395.0);
+          });
+
+          // ---- Part 22: the next exercise, again as just its input and its output ----
+          var OUT22 = 445.0, BACK22 = 446.2;
+          var GONE22 = ["ab-lst", "ab-ar", "ab-res", "ab-br"];
+          P19.forEach(function (v, i) { GONE22.push("ab-pi" + i, "ab-pt" + i, "ab-pv" + i); });
+          Q19.forEach(function (v, i) { GONE22.push("ab-qi" + i, "ab-qt" + i, "ab-qv" + i); });
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, OUT22);
+          GONE22.forEach(function (id) { tl.set("#" + id, { autoAlpha: 0 }, OUT22 + 0.9); });
+
+          // Both rows are drawn smaller and higher up so the trace card underneath can be
+          // large enough to read from the back of the room.
+          var P22 = [2, 4, 5], Q22 = [5, 4, 2, 1];
+          var TW5 = 104, TH5 = 104, GAP5 = 11, TYP = 88, TYQ = 278;
+          function buildSmall(p, values, ty) {
+            values.forEach(function (v, i) {
+              var x = X0 + i * (TW5 + GAP5), b = glyphs(v, true)[0];
+              add(p + "i" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (ty - 46) + "px; width: " + TW5 +
+                "px; font-size: 34px; line-height: 42px;", String(i));
+              add(p + "t" + i, "ab-tile", "left: " + x + "px; top: " + ty + "px; width: " + TW5 + "px; height: " + TH5 + "px;");
+              add(p + "v" + i, "ab-dig", "left: " + (x + b.x * TW5) + "px; top: " + (ty + b.y * TH5) +
+                "px; width: " + (b.w * TW5) + "px; height: " + (b.h * TH5) +
+                "px; background-image: url(\"assets/dig-" + b.d + ".png\");");
+            });
+          }
+          buildSmall("ab-x", P22, TYP);
+          buildSmall("ab-y", Q22, TYQ);
+          add("ab-l1", "ab-t", "left: " + (X0 - 296) + "px; top: " + (TYP + TH5 / 2 - 24) + "px; width: 160px;", "lst1");
+          add("ab-l2", "ab-t", "left: " + (X0 - 296) + "px; top: " + (TYQ + TH5 / 2 - 24) + "px; width: 160px;", "lst2");
+          mkArrow3("ab-a22", TYP + Math.round(TH5 / 2), X0);
+          mkArrow3("ab-b22", TYQ + Math.round(TH5 / 2), X0);
+
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK22);
+          fill("ab-x", P22, 446.8);
+          type("ab-l1", 451.6);
+          draw("ab-a22", 451.9);
+          fill("ab-y", Q22, 453.0);
+          type("ab-l2", 458.4);
+          draw("ab-b22", 458.7);
+
+          // ---- Part 23: the nested loop walked one pair at a time ----
+          // The outer variable holds its place in lst1 while the inner one runs the whole of
+          // lst2, so both rings are on screen together.
+          var RG5 = " border-width: 5px; border-radius: 22px; box-shadow: none;";
+          walker("ab-ob", "ab-ring2", X0 + 1, TYP + 1, TW5 - 2, TH5 - 2, RG5);
+          walker("ab-nb", "ab-ring", X0 + 1, TYQ + 1, TW5 - 2, TH5 - 2, RG5);
+
+          // i moves on its own first; only then does j start its run, so the two rings are
+          // never changing at the same moment
+          var STEP23 = 1.1, LEAD23 = 0.6, PER23 = 4 * STEP23 + LEAD23, T0_23 = 502.0;
+          var PITCH5 = TW5 + GAP5;
+          P22.forEach(function (v, a) {
+            var from = T0_23 + a * PER23;
+            if (a === 0) ringOn("#ab-ob", 0, from);
+            else ringTo("#ab-ob", (a - 1) * PITCH5, a * PITCH5, from, 0.45);
+            bump(["#ab-xt" + a, "#ab-xv" + a], from);
+            Q22.forEach(function (w, b) {
+              var at = from + LEAD23 + b * STEP23;
+              if (a === 0 && b === 0) ringOn("#ab-nb", 0, at);
+              else ringTo("#ab-nb", (b === 0 ? Q22.length - 1 : b - 1) * PITCH5, b * PITCH5, at, b === 0 ? 0.55 : 0.45);
+              bump(["#ab-yt" + b, "#ab-yv" + b], at);
+            });
+          });
+          ringOff("#ab-ob", T0_23 + 3 * PER23 - 0.15);
+          ringOff("#ab-nb", T0_23 + 3 * PER23 - 0.15);
+
+          // ---- Part 26: the next exercise - two lists paired off position by position ----
+          var OUT26 = 568.0, BACK26 = 569.2;
+          var GONE26 = ["ab-l1", "ab-l2", "ab-a22", "ab-b22"];
+          GONE26.push("ab-ob", "ab-nb");
+          P22.forEach(function (v, i) { GONE26.push("ab-xi" + i, "ab-xt" + i, "ab-xv" + i); });
+          Q22.forEach(function (v, i) { GONE26.push("ab-yi" + i, "ab-yt" + i, "ab-yv" + i); });
+          GONE26.forEach(function (id) { tl.set("#" + id, { autoAlpha: 0 }, OUT26 + 0.9); });
+
+          var A26 = [2, 4, 5], B26 = [1, 3, 9];
+          var C26 = ["(2,1)", "(4,3)", "(5,9)"];
+          var TY1 = 152, TY2 = 462, TY3C = 772;
+          var TW6 = 180, TH6 = 120, GAP6 = 14;
+
+          buildRow("ab-p1", A26, TY1, true);
+          buildRow("ab-p2", B26, TY2, true);
+          var X26 = 1888 - (3 * TW6 + 2 * GAP6);
+          C26.forEach(function (t, i) {
+            var x = X26 + i * (TW6 + GAP6);
+            add("ab-p3i" + i, "ab-t ab-idx", "left: " + x + "px; top: " + (TY3C - 62) + "px; width: " + TW6 + "px;", String(i));
+            add("ab-p3t" + i, "ab-tile", "left: " + x + "px; top: " + TY3C + "px; width: " + TW6 + "px; height: " + TH6 + "px;");
+            add("ab-p3v" + i, "ab-t ab-pair", "left: " + x + "px; top: " + (TY3C + 25) +
+              "px; width: " + TW6 + "px; font-size: 54px; line-height: 70px;", t);
+          });
+          add("ab-lbl1", "ab-t", "left: " + (X0 - 296) + "px; top: " + (TY1 + TH / 2 - 29) + "px; width: 160px; text-align: right; font-size: 46px; line-height: 58px;", "lst1");
+          add("ab-lbl2", "ab-t", "left: " + (X0 - 296) + "px; top: " + (TY2 + TH / 2 - 29) + "px; width: 160px; text-align: right; font-size: 46px; line-height: 58px;", "lst2");
+          add("ab-lbl3", "ab-t", "left: " + (X26 - 296) + "px; top: " + (TY3C + TH6 / 2 - 29) + "px; width: 160px; text-align: right; font-size: 46px; line-height: 58px;", "res");
+          mkArrow3("ab-q1", TY1 + Math.round(TH / 2), X0);
+          mkArrow3("ab-q2", TY2 + Math.round(TH / 2), X0);
+          mkArrow3("ab-q3", TY3C + Math.round(TH6 / 2), X26);
+
+          // each row is built the way every list in this video has been, and named once it is done
+          tl.fromTo("#root", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut", immediateRender: false }, BACK26);
+          fill("ab-p1", A26, 569.8);
+          tl.set("#ab-lbl1", { autoAlpha: 1 }, 574.8);
+          type("ab-lbl1", 574.8);
+          draw("ab-q1", 575.1);
+          fill("ab-p2", B26, 576.4);
+          tl.set("#ab-lbl2", { autoAlpha: 1 }, 581.4);
+          type("ab-lbl2", 581.4);
+          draw("ab-q2", 581.7);
+          C26.forEach(function (t, i) { rain("ab-p3t" + i, 583.0 + i * 0.18); });
+          C26.forEach(function (t, i) { pop("ab-p3i" + i, 585.0 + i * 0.22); });
+          C26.forEach(function (t, i) { drop("ab-p3v" + i, "ab-p3t" + i, 586.4 + i * 0.3); });
+          tl.set("#ab-lbl3", { autoAlpha: 1 }, 589.4);
+          type("ab-lbl3", 589.4);
+          draw("ab-q3", 589.7);
+
+          // ---- Part 28: zip takes one value from each list at the same position ----
+          var RGZ = " border-width: 5px; box-shadow: none;";
+          walker("ab-z1b", "ab-ring2", X0, TY1, TW, TH, RGZ);
+          walker("ab-z2b", "ab-ring", X0, TY2, TW, TH, RGZ);
+          // zip pairs by position, so both rings travel together
+          function zring(k, at, first) {
+            [["#ab-z1b", "#ab-p1t" + k, "#ab-p1v" + k], ["#ab-z2b", "#ab-p2t" + k, "#ab-p2v" + k]]
+              .forEach(function (g) {
+                if (first && k === 0) ringOn(g[0], 0, at);
+                else if (k > 0) ringTo(g[0], (k - 1) * (TW + GAP), k * (TW + GAP), at, 0.45);
+                bump([g[1], g[2]], at);
+              });
+          }
+          [0, 1, 2].forEach(function (k) { zring(k, 634.2 + k * 1.3, true); });
+          ringOff("#ab-z1b", 638.1);
+          ringOff("#ab-z2b", 638.1);
+          [0, 1, 2].forEach(function (k) {
+            if (k === 0) { ringOn("#ab-z1b", 0, 646.6); ringOn("#ab-z2b", 0, 646.6); }
+            zring(k, 646.6 + k * 1.1, false);
+          });
+          ringOff("#ab-z1b", 649.9);
+          ringOff("#ab-z2b", 649.9);
+
+          // ---- the frame clears so the comprehension can be written full size ----
+          tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 538.0);
+
+          window.__timelines["array-box"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>
