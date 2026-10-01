@@ -47,6 +47,30 @@ Those settings gave 286 beats, median 2.42 s — the same feel as the approved d
 (291 clips, ~2.1 s mean). Detected beats land on the authored ones (10.07 ≈ `POP_AT` 10.0,
 148.5 = `OR_AT`), which is the check that the detector is honest.
 
+### Settings that have worked
+
+| Video | What a step paints | `T` | `MIN_GAP` | Result |
+|---|---|---|---|---|
+| video-7 list comprehension | whole code windows, big tile rows | `0.03` | `0.6` | 285 clips |
+| video-8 type casting | small elements on black | `0.0010` | `0.6` | 51 clips |
+| video-7-part2 | small elements on black, with ring runs | `0.00015` | `0.9` | 74 clips |
+
+**`MIN_GAP` is the second knob, and it matters for traversals.** One step of a ring run is
+two movements - the ring glides, then a value drops into a slot - about 0.6 s apart. At
+`MIN_GAP 0.6` each step becomes two clicks; at `0.9` the pair merges and one step is one
+click, while steps 1.4 s apart stay separate. Check a run explicitly: count the beats
+between its first and last step and compare with the number of indices.
+
+**Sanity check before trusting a sweep:** compare the peak activity of a step against `T`.
+If the peaks are *below* `T`, nothing registers as motion at all and what look like beats
+are really `MAX_LEN` cutting on a timer. The giveaway is a run of clips all exactly
+`MAX_LEN` seconds long, and `beats3.py` reporting a max equal to `MAX_LEN`.
+
+```python
+import numpy as np; a = np.load("activity.npy")
+a[int(73.6*30):int(75.0*30)].max()   # one step's peak, against T
+```
+
 ## How the cutting works
 
 Two ffmpeg passes, so every clip starts on a clean frame:
