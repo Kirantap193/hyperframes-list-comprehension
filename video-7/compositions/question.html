@@ -146,7 +146,8 @@
 
           // each sample row slides in as a piece, then its value is printed
           built.forEach(function (b, i) {
-            var rowAt = at + 0.55 + i * 1.5;
+            // the question is left to be read, then one format at a time
+            var rowAt = at + 2.2 + i * 2.8;
             [b.chip, b.slot].forEach(function (e) {
               tl.fromTo(e, { opacity: 0, x: -26 }, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out", immediateRender: false }, rowAt);
             });

@@ -166,15 +166,19 @@
           var at = type(q1, Q_AT, 0.035);
           at = type(q2, at + 0.18, 0.035);
 
-          var rowAt = at + 0.6;
-          built.forEach(function (b) {
+          // The question is read first. Then each format arrives on its own: lines within
+          // one format follow closely, formats are separated by a longer pause.
+          var LEAD = 1.6, WITHIN = 1.7, BETWEEN = 2.0;
+          var rowAt = at + LEAD;
+          built.forEach(function (b, gi) {
+            if (gi) rowAt += BETWEEN;
             [b.chip, b.colon].forEach(function (e) {
               tl.fromTo(e, { opacity: 0, x: -26 }, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out", immediateRender: false }, rowAt);
             });
-            b.rows.forEach(function (r) {
+            b.rows.forEach(function (r, ri) {
+              if (ri) rowAt += WITHIN;
               tl.fromTo(r.slot, { opacity: 0, x: -26 }, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out", immediateRender: false }, rowAt);
               type(r.value, rowAt + 0.45, 0.025);
-              rowAt += 2.2;
             });
           });
 
