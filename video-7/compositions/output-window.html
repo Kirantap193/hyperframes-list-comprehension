@@ -19,7 +19,7 @@
         .ow-line { white-space: pre; }
       </style>
 
-      <div data-hf-id="hf-fkux" id="root" data-composition-id="output-window" data-width="1920" data-height="1080" data-duration="659"></div>
+      <div data-hf-id="hf-fkux" id="root" data-composition-id="output-window" data-width="1920" data-height="1080" data-duration="672"></div>
 
       <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
       <script>
@@ -154,6 +154,10 @@
           // ---- the windows clear for the next exercise ----
           tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 568.0);
 
+          // ---- room for question c, which goes in at 180s ----
+          // Everything authored from here on moves 13s later, so the times above stay
+          // exactly as they were approved and rendered.
+          tl.shiftChildren(13.0, true, 180.0);
           window.__timelines["output-window"] = tl;
         })();
       </script>

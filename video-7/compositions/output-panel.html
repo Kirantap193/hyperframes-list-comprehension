@@ -47,7 +47,7 @@
         .tr-div { position: absolute; opacity: 0; width: 2px; background: rgba(255, 220, 180, 0.22); }
       </style>
 
-      <div data-hf-id="hf-9s8c" id="root" data-composition-id="output-panel" data-width="1920" data-height="1080" data-duration="659"></div>
+      <div data-hf-id="hf-9s8c" id="root" data-composition-id="output-panel" data-width="1920" data-height="1080" data-duration="672"></div>
 
       <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
       <script>
@@ -251,6 +251,10 @@
           });
 
 
+          // ---- room for question c, which goes in at 180s ----
+          // Everything authored from here on moves 13s later, so the times above stay
+          // exactly as they were approved and rendered.
+          tl.shiftChildren(13.0, true, 180.0);
           window.__timelines["output-panel"] = tl;
         })();
       </script>

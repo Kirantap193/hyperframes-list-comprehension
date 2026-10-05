@@ -53,7 +53,7 @@
         .cw-com, .cw-comment span { color: var(--cw-comment); }
       </style>
 
-      <div data-hf-id="hf-bjih" id="root" data-composition-id="code-window" data-width="1920" data-height="1080" data-duration="659">
+      <div data-hf-id="hf-bjih" id="root" data-composition-id="code-window" data-width="1920" data-height="1080" data-duration="672">
         <div data-hf-id="hf-lzc7" id="cw-stage" class="cw-stage" data-layout-allow-overflow="true">
           <div data-hf-id="hf-8cnz" id="cw-win" class="cw-win" data-layout-allow-overflow="true">
             <svg data-hf-id="hf-kr93" id="cw-svg" class="cw-svg" width="856" height="541" xmlns="http://www.w3.org/2000/svg">
@@ -980,6 +980,10 @@
           // ---- the windows clear for the next exercise ----
           tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 568.0);
 
+          // ---- room for question c, which goes in at 180s ----
+          // Everything authored from here on moves 13s later, so the times above stay
+          // exactly as they were approved and rendered.
+          tl.shiftChildren(13.0, true, 180.0);
           window.__timelines["code-window"] = tl;
         })();
       </script>

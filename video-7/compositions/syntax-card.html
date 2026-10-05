@@ -65,7 +65,7 @@
         .sc-brace.sc-cond { color: #ffae3d; background: none; }
       </style>
 
-      <div data-hf-id="hf-3al3" id="root" data-composition-id="syntax-card" data-width="1920" data-height="1080" data-duration="659">
+      <div data-hf-id="hf-3al3" id="root" data-composition-id="syntax-card" data-width="1920" data-height="1080" data-duration="672">
         <div data-hf-id="hf-vkgy" id="sc-panel"><div data-hf-id="hf-vf3y" id="sc-pill">Syntax</div></div>
       </div>
 
@@ -262,6 +262,10 @@
           // ---- only the lists are left for the closing pair row ----
           tl.fromTo("#root", { opacity: 1 }, { opacity: 0, duration: 0.8, ease: "power1.inOut", immediateRender: false }, 239.0);
 
+          // ---- room for question c, which goes in at 180s ----
+          // Everything authored from here on moves 13s later, so the times above stay
+          // exactly as they were approved and rendered.
+          tl.shiftChildren(13.0, true, 180.0);
           window.__timelines["syntax-card"] = tl;
         })();
       </script>
